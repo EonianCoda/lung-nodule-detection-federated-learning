@@ -50,6 +50,6 @@ python main.py --config_path <config_path> --exp_name <exp_name> --clents_config
 Arguments:
 - `--config_path` the path of config file, e.g. `./config/stage1_fedavg.yaml`
 - `--exp_name` the name of experiment, e.g. `exp1`
-- `--clents_config_path` the path of clients config file, e.g. `./config/clients/COA/stage1_clients.yaml`
+- `--clents_config_path` the path of clients config file, e.g. `./config/clients/stage1_clients.yaml`
 - `--resume_folder` the path of resuming folder, default is `None`
 - `--pretrained_model_path` the path of pretrained model, default is `None`
