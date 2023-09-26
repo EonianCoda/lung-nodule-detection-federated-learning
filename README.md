@@ -19,8 +19,8 @@ Usage:
 python main.py --config_path <config_path> --exp_name <exp_name> --clents_config_path <clients_config_path> --resume_folder <resume_folder> --pretrained_model_path <pretrained_model_path>
 ```
 Arguments:
-- `--config_path` the path of config file
-- `--exp_name` the name of experiment
-- `--clents_config_path` the path of clients config file
+- `--config_path` the path of config file, e.g. `./config/stage1.yaml`
+- `--exp_name` the name of experiment, e.g. `exp1`
+- `--clents_config_path` the path of clients config file, e.g. `./config/clients/COA/stage1_clients.yaml`
 - `--resume_folder` the path of resuming folder, default is `None`
 - `--pretrained_model_path` the path of pretrained model, default is `None`
