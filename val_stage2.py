@@ -8,12 +8,12 @@ import re
 from typing import List, Union
 
 import torch
-from offline_fl.dataset.stage2_dataset import Stage2Dataset
-from offline_fl.client.stage2_logic import test
+from fl_modules.dataset.stage2_dataset import Stage2Dataset
+from fl_modules.client.stage2_logic import test
 
-from offline_fl.inference.nodule_counter import NoduleCounter
-from offline_fl.utilities import build_instance, load_yaml, setup_logging
-from offline_fl.utilities.nodule_metrics import NoduleMetrics
+from fl_modules.inference.nodule_counter import NoduleCounter
+from fl_modules.utilities import build_instance, load_yaml, setup_logging
+from fl_modules.utilities.nodule_metrics import NoduleMetrics
 
 logger = logging.getLogger(__name__)
 cache_folder = './cache/'
@@ -46,7 +46,7 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--val_set', default = 'fl_cmp_valABC.txt')
     parser.add_argument('--model_path', type=str, default='auto')
-    parser.add_argument('--model', default='offline_fl.model.stage2.stage2_model.Stage2Model')
+    parser.add_argument('--model', default='fl_modules.model.stage2.stage2_model.Stage2Model')
     parser.add_argument('--config_path', default='./config/stage2.yaml')
     parser.add_argument('--result_save_path', type=str, default='')
     args = parser.parse_args()

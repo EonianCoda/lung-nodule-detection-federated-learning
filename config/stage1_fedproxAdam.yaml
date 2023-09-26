@@ -9,7 +9,7 @@ server:
   best_model_metric_name: recall
 
   model: 
-    template: offline_fl.model.stage1.stage1_model.Stage1Model
+    template: fl_modules.model.stage1.stage1_model.Stage1Model
     params:
       base_planes: 8
       normalization: instance
@@ -20,23 +20,23 @@ server:
       decay: 0.99
 
   optimizer: 
-    template: offline_fl.optimizer.fedprox.FedProxAdam
+    template: fl_modules.optimizer.fedprox.FedProxAdam
     params:
       lr: 0.0001
       mu: 0.01
 
   actions:
     train:
-      template: offline_fl.client.stage1_logic.train
+      template: fl_modules.client.stage1_logic.train
       params:
         num_epoch: 1
         batch_size: 1
     val:
-      template: offline_fl.client.stage1_logic.validation
+      template: fl_modules.client.stage1_logic.validation
       params:
         iou_threshold: 0.2
     test:
-      template: offline_fl.client.stage1_logic.test
+      template: fl_modules.client.stage1_logic.test
       params:
         iou_threshold: 0.01
         nodule_3d_minimum_size: 5
@@ -45,7 +45,7 @@ server:
   aggregation:
     optimizer_aggregate_strategy: continue_global # continue_global, continue_local, reset
     template:
-      offline_fl.server.aggregation.fedavg.FedAvg
+      fl_modules.server.aggregation.fedavg.FedAvg
     params:
       model:
         keep_local_state: []
@@ -60,7 +60,7 @@ client:
     suspicious: [418, -1]
     
   dataset:
-    template: offline_fl.dataset.stage1_dataset.Stage1Dataset
+    template: fl_modules.dataset.stage1_dataset.Stage1Dataset
     params:
       depth: 32
 

@@ -6,8 +6,8 @@ import logging
 from typing import List, Dict, Any
 
 import torch
-from offline_fl.utilities import build_instance, write_yaml
-from offline_fl.inference.nodule_counter import NoduleCounter
+from fl_modules.utilities import build_instance, write_yaml
+from fl_modules.inference.nodule_counter import NoduleCounter
 logger = logging.getLogger(__name__)
 
 class Client:

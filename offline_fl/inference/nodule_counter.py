@@ -4,8 +4,8 @@ import logging
 from multiprocessing import Pool
 from typing import Dict, Union, List
 
-from offline_fl.dataset.utils import get_nodule_type, load_series_list
-from offline_fl.inference.utils import load_gt_mask_maps, get_3d_connected_componment
+from fl_modules.dataset.utils import get_nodule_type, load_series_list
+from fl_modules.inference.utils import load_gt_mask_maps, get_3d_connected_componment
 
 LAST_MODIFIED_TIME = 'last_modified_time'
 NODULE_SIZE = 'nodule_size'

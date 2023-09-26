@@ -8,7 +8,7 @@ from typing import Tuple, Union, List, Optional
 import torch
 import torch.nn as nn
 
-from offline_fl.model.stage1.stage1_model import Stage1Model
+from fl_modules.model.stage1.stage1_model import Stage1Model
 
 HU_MIN, HU_MAX = -1000, 400
 

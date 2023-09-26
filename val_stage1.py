@@ -8,12 +8,12 @@ import re
 from typing import List, Union
 
 import torch
-from offline_fl.dataset.stage1_dataset import Stage1Dataset
-from offline_fl.client.stage1_logic import test
+from fl_modules.dataset.stage1_dataset import Stage1Dataset
+from fl_modules.client.stage1_logic import test
 
-from offline_fl.inference.nodule_counter import NoduleCounter
-from offline_fl.utilities import build_instance, load_yaml, setup_logging
-from offline_fl.utilities.nodule_metrics import NoduleMetrics
+from fl_modules.inference.nodule_counter import NoduleCounter
+from fl_modules.utilities import build_instance, load_yaml, setup_logging
+from fl_modules.utilities.nodule_metrics import NoduleMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def get_parser():
     parser.add_argument('--iou_threshold', type = float, default = 0.01)
     parser.add_argument('--nodule_3d_minimum_size', type = int, default = 5)
     parser.add_argument('--model_path', type=str, default='auto')
-    parser.add_argument('--model', default='offline_fl.model.stage1.stage1_model.Stage1Model')
+    parser.add_argument('--model', default='fl_modules.model.stage1.stage1_model.Stage1Model')
     parser.add_argument('--result_save_path', type=str, default='')
     args = parser.parse_args()
     return args

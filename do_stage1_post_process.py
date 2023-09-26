@@ -4,8 +4,8 @@ import logging
 import shutil
 import argparse
 
-from offline_fl.inference.stage1_post_processor import PostProcessorStage1
-from offline_fl.utilities import load_yaml, setup_logging
+from fl_modules.inference.stage1_post_processor import PostProcessorStage1
+from fl_modules.utilities import load_yaml, setup_logging
 
 data_config_path = './config/data_config.yaml'
 data_config = load_yaml(data_config_path)

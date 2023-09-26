@@ -1,7 +1,7 @@
 import torch
 
 from typing import List, Dict, Any, Tuple, Optional
-from offline_fl.client.client import Client
+from fl_modules.client.client import Client
 
 class Aggregation:
     def __init__(self, 

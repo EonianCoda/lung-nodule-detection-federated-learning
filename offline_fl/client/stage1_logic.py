@@ -5,10 +5,10 @@ from torch.utils.data import DataLoader, Dataset
 import torch.nn as nn
 import torch
 
-from offline_fl.inference.predictor import PredictorStage1 
+from fl_modules.inference.predictor import PredictorStage1 
 from ..optimizer.losses import dice_log_loss
-from offline_fl.utilities import get_progress_bar
-from offline_fl.model.ema import EMA
+from fl_modules.utilities import get_progress_bar
+from fl_modules.model.ema import EMA
 
 logger = logging.getLogger(__name__)
 PRINT_EVERY = 1000

@@ -8,12 +8,12 @@ from collections import defaultdict
 from torch.utils.tensorboard import SummaryWriter
 import torch
 import shutil
-from offline_fl.client.client import Client
-from offline_fl.utilities.nodule_metrics import NoduleMetrics
-from offline_fl.utilities import build_instance, build_class
-from offline_fl.utilities.draw_fig import MetricDrawer
-from offline_fl.inference.utils import compute_recall, compute_precision, compute_f1_score
-from offline_fl.model.ema import EMA
+from fl_modules.client.client import Client
+from fl_modules.utilities.nodule_metrics import NoduleMetrics
+from fl_modules.utilities import build_instance, build_class
+from fl_modules.utilities.draw_fig import MetricDrawer
+from fl_modules.inference.utils import compute_recall, compute_precision, compute_f1_score
+from fl_modules.model.ema import EMA
 
 
 logger = logging.getLogger(__name__)

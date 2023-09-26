@@ -7,8 +7,8 @@ from torch.utils.data import DataLoader, Dataset
 import torch.nn as nn
 import torch
 
-from offline_fl.utilities import get_progress_bar
-from offline_fl.model.ema import EMA
+from fl_modules.utilities import get_progress_bar
+from fl_modules.model.ema import EMA
 
 from ..optimizer.losses import focal_loss
 logger = logging.getLogger(__name__)

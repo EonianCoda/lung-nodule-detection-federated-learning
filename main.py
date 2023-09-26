@@ -2,8 +2,8 @@ import os
 from os.path import join
 import argparse
 
-from offline_fl.server.server import Server
-from offline_fl.utilities import load_yaml, get_local_time_in_taiwan, init_seed, setup_logging, write_yaml
+from fl_modules.server.server import Server
+from fl_modules.utilities import load_yaml, get_local_time_in_taiwan, init_seed, setup_logging, write_yaml
 
 def get_args():
     parser = argparse.ArgumentParser(description = 'Offline Federated Learning')

@@ -7,13 +7,13 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
-from offline_fl.client.stage2_logic import train, validation, test
-from offline_fl.dataset.stage2_dataset import Stage2Dataset
-from offline_fl.model.ema import EMA
+from fl_modules.client.stage2_logic import train, validation, test
+from fl_modules.dataset.stage2_dataset import Stage2Dataset
+from fl_modules.model.ema import EMA
 
-from offline_fl.inference.nodule_counter import NoduleCounter
-from offline_fl.utilities import build_instance, load_yaml, get_local_time_in_taiwan, setup_logging, write_yaml, init_seed
-from offline_fl.utilities.nodule_metrics import NoduleMetrics
+from fl_modules.inference.nodule_counter import NoduleCounter
+from fl_modules.utilities import build_instance, load_yaml, get_local_time_in_taiwan, setup_logging, write_yaml, init_seed
+from fl_modules.utilities.nodule_metrics import NoduleMetrics
 from val_stage2 import write_lines
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ def get_parser():
     parser.add_argument('--num_epoch', type = int, default = 80)
     parser.add_argument('--lr', type = float, default = 0.0001)
     parser.add_argument('--seed', type = int, default = 1029)
-    parser.add_argument('--model', default='offline_fl.model.stage2.stage2_model.Stage2Model')
+    parser.add_argument('--model', default='fl_modules.model.stage2.stage2_model.Stage2Model')
     parser.add_argument('--base_planes', type = int, default = 16)
     parser.add_argument('--apply_ema', action='store_true', default=False)
     parser.add_argument('--ema_decay', type=float, default=0.999)
