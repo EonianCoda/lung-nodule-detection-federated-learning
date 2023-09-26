@@ -43,7 +43,7 @@ class Stage1Dataset(Dataset):
                                             'npy', 
                                             'lobe_info.txt')
             gt_mask_maps_path = os.path.join(folder,
-                                    'mask', 
+                                    'mask',
                                     f'{file_name}.npz')
             series_nodules_counts_path = os.path.join(folder,
                                         'mask', 
