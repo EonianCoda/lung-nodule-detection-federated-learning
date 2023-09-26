@@ -1,0 +1,7 @@
+opencv-python 
+connected-components-3d
+albumentations
+tensorboard
+rich
+tqdm
+matplotlib

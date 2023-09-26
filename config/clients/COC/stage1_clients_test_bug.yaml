@@ -1,0 +1,26 @@
+COA:
+  dataset_params:
+    train:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+    val:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+    test:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+
+COB:
+  dataset_params:
+    train:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+    val:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+    test:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+
+COC:
+  dataset_params:
+    train:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+    val:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+    test:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'

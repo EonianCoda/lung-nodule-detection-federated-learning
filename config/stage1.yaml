@@ -1,0 +1,64 @@
+common:
+  seed: 1029
+  enable_progress_bar: True
+  save_dir: './save'
+  save_local_state: False
+  
+server:
+  total_rounds: 40
+  best_model_metric_name: recall
+
+  model: 
+    template: offline_fl.model.stage1.stage1_model.Stage1Model
+    params:
+      base_planes: 8
+      normalization: instance
+  
+  ema:
+    apply: False
+    params:
+      decay: 0.99
+
+  optimizer: 
+    template: torch.optim.Adam
+    params:
+      lr: 0.0001
+
+  actions:
+    train:
+      template: offline_fl.client.stage1_logic.train
+      params:
+        num_epoch: 1
+        batch_size: 1
+    val:
+      template: offline_fl.client.stage1_logic.validation
+      params:
+        iou_threshold: 0.2
+    test:
+      template: offline_fl.client.stage1_logic.test
+      params:
+        iou_threshold: 0.01
+        nodule_3d_minimum_size: 5
+        nodule_3d_minimum_thickness: 3
+
+  aggregation:
+    optimizer_aggregate_strategy: continue_global # continue_global, continue_local, reset
+    template:
+      offline_fl.server.aggregation.fedavg.FedAvg
+    params:
+      model:
+        keep_local_state: []
+      optimizer:
+        keep_local_state: [] # If strategy is not continue_global, this field is ignored.
+
+client:
+  nodule_size_ranges: # pixel size
+    benign: [0, 52] 
+    probably_benign: [52, 176] 
+    probably_suspicious: [176, 418]
+    suspicious: [418, -1]
+    
+  dataset:
+    template: offline_fl.dataset.stage1_dataset.Stage1Dataset
+    params:
+      depth: 32

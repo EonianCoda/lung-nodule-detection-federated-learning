@@ -1,0 +1,33 @@
+COA:
+  dataset_params:
+    train:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+      cache_folder: './cache/COA/'
+    val:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+      cache_folder: './cache/COA/'
+    test:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+      cache_folder: './cache/COA/'
+COB:
+  dataset_params:
+    train:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+      cache_folder: './cache/COB/'
+    val:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+      cache_folder: './cache/COB/'
+    test:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+      cache_folder: './cache/COB/'
+COC:
+  dataset_params:
+    train:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+      cache_folder: './cache/COC/'
+    val:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+      cache_folder: './cache/COC/'
+    test:
+      series_list_path: '/hdd/openfl_system_inference_test/small_train.txt'
+      cache_folder: './cache/COC/'
