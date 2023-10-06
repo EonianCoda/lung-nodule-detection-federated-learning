@@ -23,7 +23,7 @@ server:
     template: fl_modules.optimizer.scaffold.ScaffoldAdam
     params:
       lr: 0.0001
-      mu: 0.1
+      mu: 1.0
       num_clients: 3
 
   actions:
