@@ -63,25 +63,3 @@ client:
     template: fl_modules.dataset.stage1_dataset.Stage1Dataset
     params:
       depth: 32
-
-fl_clients:
-  COA:
-    root: '/disk/HDD1/FL/openfl_system_inference_test'
-    data:
-      train: 'fl_cmp_trainA.txt'
-      val: 'fl_cmp_valA.txt'
-      test: 'fl_cmp_testA.txt'
-
-  COB:
-    root: '/disk/HDD1/FL/openfl_system_inference_test'
-    data:
-      train: 'fl_cmp_trainB.txt'
-      val: 'fl_cmp_valB.txt'
-      test: 'fl_cmp_testB.txt'
-
-  COC:
-    root: '/disk/HDD1/FL/openfl_system_inference_test'
-    data:
-      train: 'fl_cmp_trainC.txt'
-      val: 'fl_cmp_valC.txt'
-      test: 'fl_cmp_testC.txt'
