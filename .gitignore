@@ -1,5 +1,6 @@
 *.txt
 
+data
 !requirements.txt
 *.db
 *.pkl
