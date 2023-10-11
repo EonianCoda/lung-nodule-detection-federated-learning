@@ -8,8 +8,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
-from fl_modules.client.cirfar10_logic import train_fixmatch, validation, test
-from fl_modules.dataset.cifar10.cifar10_dataset import Cifar10SupervisedDataset, Cifar10UnsupervisedDataset
+from fl_modules.client.cirfar10_logic import train_normal, validation, test
+from fl_modules.dataset.cifar10.cifar10_dataset import Cifar10SupervisedDataset
 from fl_modules.dataset.cifar10.utils import prepare_cifar10_datasets
 from fl_modules.model.ema import EMA
 
@@ -24,12 +24,11 @@ def get_parser():
     parser.add_argument('--train_set', default = 'fl_cmp_trainABC.txt')
     parser.add_argument('--val_set', default = 'fl_cmp_valABC.txt')
     parser.add_argument('--test_set', default = 'val.txt')
-    parser.add_argument('--batch_size', type = int, default = 32)
+    parser.add_argument('--batch_size', type = int, default = 64)
     parser.add_argument('--num_epoch', type = int, default = 150)
     parser.add_argument('--lr', type = float, default = 0.001)
     parser.add_argument('--seed', type = int, default = 1029)
     parser.add_argument('--model', default='fl_modules.model.fedmatch.resnet9.ResNet9')
-    parser.add_argument('--merge_supervised', action='store_true', default=False)
     parser.add_argument('--apply_ema', action='store_true', default=False)
     parser.add_argument('--ema_decay', type=float, default=0.999)
     parser.add_argument('--resume_model_path', type=str, default='')
@@ -120,7 +119,6 @@ if __name__ == '__main__':
         else:
             ema = None
     
-
     saving_model_root = os.path.join(exp_root, 'model')
     log_txt_path = os.path.join(exp_root, 'log.txt')
     setup_logging(log_file=log_txt_path)
@@ -131,19 +129,12 @@ if __name__ == '__main__':
         write_yaml(os.path.join(exp_root, 'setting.yaml'), vars(args))
     
     # Get dataset
-    train_s, train_u, val_set, test_set = prepare_cifar10_datasets(train_val_test_split = [0.8, 0.1, 0.1], seed=seed, num_clients=1)
+    train_s, train_u, val_set, test_set = prepare_cifar10_datasets(train_val_test_split = [0.8, 0.1, 0.1], s_u_split=[1.0, 0.0], num_clients = 1, seed=seed)
     train_s = train_s[0]
-    train_u = train_u[0]
-    train_s_dataset = Cifar10SupervisedDataset(dataset_type = 'train',
+    train_dataset = Cifar10SupervisedDataset(dataset_type = 'train',
                                                x = train_s['x'], 
                                                y = train_s['y'], 
                                                do_augment = True)
-    if merge_supervised:
-        train_u['x'] = np.concatenate([train_u['x'], train_s['x'].copy()])
-    
-    train_u_dataset = Cifar10UnsupervisedDataset(dataset_type = 'train',
-                                                x = train_u['x'],
-                                                targets=['weak', 'strong'])
     val_dataset = Cifar10SupervisedDataset(dataset_type = 'val', 
                                              x = val_set['x'], 
                                              y = val_set['y'])
@@ -161,9 +152,8 @@ if __name__ == '__main__':
     for epoch in range(start_epoch, end_epoch):
         logger.info("Epoch {}/{}:".format(epoch + 1, end_epoch))
         # Train
-        train_metrics = train_fixmatch(model = model,
-                                       dataset_s = train_s_dataset,
-                                        dataset_u = train_u_dataset,
+        train_metrics = train_normal(model = model,
+                                       dataset_s = train_dataset,
                                         optimizer = optimizer,
                                         num_epoch = 1,
                                         batch_size = train_batch_size,
@@ -177,7 +167,7 @@ if __name__ == '__main__':
         if ema is not None:
             ema.apply_shadow()
         
-        if epoch != 0 and epoch % 10 == 0:
+        if epoch != 0 and epoch % 50 == 0:
             save_states(model = model, 
                         optimizer = optimizer, 
                         save_path = os.path.join(saving_model_root, f'{epoch + 1}.pth'),

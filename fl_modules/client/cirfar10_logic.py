@@ -116,6 +116,79 @@ def train_fixmatch(model: nn.Module,
         for metric, value in train_metrics.items():
             logger.info("Train metric '{}' = {:.4f}".format(metric, value))
     return train_metrics
+
+def train_normal(model: nn.Module, 
+                dataset: Dataset,
+                optimizer: torch.optim.Optimizer,
+                num_epoch: int, 
+                device: torch.device,
+                unsupervised_conf_thrs: float = 0.95,
+                ema: EMA = None,
+                batch_size = 10,
+                enable_progress_bar = False,
+                log_metric = False) -> Dict[str, float]:
+                
+    model.train()
+    optimizer.zero_grad()
+    
+    avg_total_loss, avg_loss_s, avg_loss_u = 0.0, 0.0, 0.0
+    avg_acc = 0.0
+    supervised_loss_fn = CrossEntropyLoss()
+    # Calculate unsupervised loss    
+    batch_size_s = batch_size
+    num_steps = len(dataset) // batch_size_s
+
+    for epoch in range(num_epoch):
+        dataloader = DataLoader(dataset, batch_size = batch_size_s, shuffle = True, num_workers = os.cpu_count() // 2)
+        if enable_progress_bar:
+            progress_bar = get_progress_bar('Train', len(dataloader), epoch, num_epoch)
+        else:
+            progress_bar = None
+
+        running_total_loss, running_loss_s, running_loss_u = 0.0, 0.0, 0.0
+        running_acc = 0.0
+        for step, (x_s, y_s) in enumerate(dataloader):
+            x_s, y_s = x_s.to(device), y_s.to(device)
+            y_s_one_hot =  nn.functional.one_hot(y_s.long(), num_classes=10).float() 
+            
+            # Calculate supervised loss
+            y_pred_s = model(x_s)
+            loss = supervised_loss_fn(y_pred_s, y_s_one_hot) * LAMBDA_S
+            acc = torch.sum(torch.argmax(y_pred_s, dim=1) == y_s).item() / len(y_s)
+            
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+            
+            # Update EMA
+            if ema is not None:
+                ema.update()
+            
+            # Log loss and metrics
+            running_total_loss = running_total_loss + loss.item()
+            running_acc = running_acc + acc
+            
+            avg_total_loss = running_total_loss / (step + 1)
+            avg_acc = running_acc / (step + 1)
+            if progress_bar is not None:
+                progress_bar.set_postfix(loss = avg_total_loss,
+                                         loss_s = avg_loss_s,
+                                        loss_u = avg_loss_u,
+                                        acc_s = avg_acc)
+                progress_bar.update()
+        if progress_bar is not None:
+            progress_bar.close()
+                
+    final_avg_total_loss = running_total_loss / num_steps 
+    final_avg_acc = running_acc / num_steps
+    
+    train_metrics = {'acc_s': final_avg_acc,
+                    'loss': final_avg_total_loss}
+    
+    if log_metric:
+        for metric, value in train_metrics.items():
+            logger.info("Train metric '{}' = {:.4f}".format(metric, value))
+    return train_metrics
     
 def validation(model: nn.Module, 
                dataset: Dataset,
@@ -149,7 +222,8 @@ def validation(model: nn.Module,
             avg_acc = sum(running_accs) / len(running_accs)
             progress_bar.set_postfix(loss = avg_loss, accuracy = avg_acc)
             progress_bar.update()
-    
+    if progress_bar is not None:
+        progress_bar.close()
     val_metrics = {'loss': sum(running_losses) / len(running_losses),
                     'accuracy': sum(running_accs) / len(running_accs)}
     if log_metric:

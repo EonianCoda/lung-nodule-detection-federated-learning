@@ -62,7 +62,6 @@ class Cifar10SupervisedDataset(Dataset):
         self.x = x
         self.y = torch.from_numpy(y).long()
         self.do_augment = do_augment
-        self.strong_augment = strong_augment
     
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         x = self.x[index]
