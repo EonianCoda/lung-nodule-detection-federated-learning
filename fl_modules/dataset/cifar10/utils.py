@@ -18,8 +18,8 @@ def load_cifar10() -> Tuple[NDArray[np.uint8], NDArray[np.int32]]:
         y: (60000,)
     """
     if not os.path.exists(CIFAR10_PATH):
-        train_set = torchvision.datasets.CIFAR10(root=SAVE_ROOT, train=True, transform=None, download=False)
-        test_set = torchvision.datasets.CIFAR10(root=SAVE_ROOT, train=False, transform=None, download=False)
+        train_set = torchvision.datasets.CIFAR10(root=SAVE_ROOT, train=True, transform=None, download=True)
+        test_set = torchvision.datasets.CIFAR10(root=SAVE_ROOT, train=False, transform=None, download=True)
         
         x, y = [], []
         for img, target in train_set:
@@ -60,6 +60,7 @@ def split_data(x: NDArray[np.uint8],
     
     # Split into one set
     if len(split_ratios) == 1:
+        splited_dataset = dict()
         splited_dataset[0] = {'x': x, 'y': y}
         return splited_dataset
     

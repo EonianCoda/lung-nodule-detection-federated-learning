@@ -55,10 +55,10 @@ def build_class(template: str) -> Any:
 
     return cls
 
-def build_instance(template: str, settings: Optional[Dict[str, Any]]) -> Any:
+def build_instance(template: str, settings: Optional[Dict[str, Any]] = None) -> Any:
     """BUild a object based on given template and setting
     """
-    if len(settings) == 0 or settings == None:
+    if settings == None or len(settings) == 0:
         return build_class(template)()
     else:
         return build_class(template)(**settings)

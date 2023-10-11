@@ -1,5 +1,6 @@
 *.txt
 
+save
 data
 !requirements.txt
 *.db

@@ -24,16 +24,16 @@ def get_parser():
     parser.add_argument('--train_set', default = 'fl_cmp_trainABC.txt')
     parser.add_argument('--val_set', default = 'fl_cmp_valABC.txt')
     parser.add_argument('--test_set', default = 'val.txt')
-    parser.add_argument('--batch_size', type = int, default = 1)
-    parser.add_argument('--num_epoch', type = int, default = 30)
-    parser.add_argument('--lr', type = float, default = 0.0001)
+    parser.add_argument('--batch_size', type = int, default = 32)
+    parser.add_argument('--num_epoch', type = int, default = 150)
+    parser.add_argument('--lr', type = float, default = 0.001)
     parser.add_argument('--seed', type = int, default = 1029)
     parser.add_argument('--model', default='fl_modules.model.fedmatch.resnet9.ResNet9')
     parser.add_argument('--merge_supervised', action='store_true', default=False)
     parser.add_argument('--apply_ema', action='store_true', default=False)
     parser.add_argument('--ema_decay', type=float, default=0.999)
     parser.add_argument('--resume_model_path', type=str, default='')
-    parser.add_argument('--best_model_metric_name', type=str, default='recall')
+    parser.add_argument('--best_model_metric_name', type=str, default='accuracy')
     args = parser.parse_args()
     return args
 
@@ -132,6 +132,8 @@ if __name__ == '__main__':
     
     # Get dataset
     train_s, train_u, val_set, test_set = prepare_cifar10_datasets(train_val_test_split = [0.8, 0.1, 0.1], seed=seed, num_clients=1)
+    train_s = train_s[0]
+    train_u = train_u[0]
     train_s_dataset = Cifar10SupervisedDataset(dataset_type = 'train',
                                                x = train_s['x'], 
                                                y = train_s['y'], 

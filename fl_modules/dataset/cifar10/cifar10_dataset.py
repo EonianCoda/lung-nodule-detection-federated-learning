@@ -60,7 +60,7 @@ class Cifar10SupervisedDataset(Dataset):
         self.dataset_type = dataset_type
 
         self.x = x
-        self.y = nn.functional.one_hot(y, num_classes=10).float() 
+        self.y = torch.from_numpy(y).long()
         self.do_augment = do_augment
         self.strong_augment = strong_augment
     

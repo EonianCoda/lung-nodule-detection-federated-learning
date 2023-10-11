@@ -15,7 +15,7 @@ def conv_block(in_channels: int,
 
 class ResNet9(nn.Module):
     def __init__(self, 
-                 in_channels: int = 1, 
+                 in_channels: int = 3, 
                  num_classes: int = 10):
         super(ResNet9, self).__init__()
         

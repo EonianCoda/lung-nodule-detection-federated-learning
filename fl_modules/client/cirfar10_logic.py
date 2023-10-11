@@ -17,8 +17,8 @@ LAMBDA_I = 1e-2 # inter-client consistency
 LAMBDA_A = 1e-2 # agreement-based pseudo labeling
 
 def train_fixmatch(model: nn.Module, 
-                    supervised_dataset: Dataset,
-                    unsupervised_dataset: Dataset, 
+                    dataset_s: Dataset,
+                    dataset_u: Dataset, 
                     optimizer: torch.optim.Optimizer,
                     num_epoch: int, 
                     device: torch.device,
@@ -36,13 +36,13 @@ def train_fixmatch(model: nn.Module,
     supervised_loss_fn = CrossEntropyLoss()
     # Calculate unsupervised loss    
     batch_size_s = batch_size
-    num_steps = len(supervised_dataset) // batch_size_s
-    if unsupervised_dataset is not None:
-        batch_size_u = len(unsupervised_dataset) // num_steps
+    num_steps = len(dataset_s) // batch_size_s
+    if dataset_u is not None:
+        batch_size_u = len(dataset_u) // num_steps
 
     for epoch in range(num_epoch):
-        supervised_dataloader = DataLoader(supervised_dataset, batch_size = batch_size_s, shuffle = True, num_workers = os.cpu_count() // 2, drop_last=True)
-        unsupervised_dataloader = DataLoader(unsupervised_dataset, batch_size = batch_size_u, shuffle = True, num_workers = os.cpu_count() // 2, drop_last=True)    
+        supervised_dataloader = DataLoader(dataset_s, batch_size = batch_size_s, shuffle = True, num_workers = os.cpu_count() // 2, drop_last=True)
+        unsupervised_dataloader = DataLoader(dataset_u, batch_size = batch_size_u, shuffle = True, num_workers = os.cpu_count() // 2, drop_last=True)    
         if enable_progress_bar:
             progress_bar = get_progress_bar('Train', len(supervised_dataloader), epoch, num_epoch)
         else:
@@ -50,15 +50,16 @@ def train_fixmatch(model: nn.Module,
 
         running_total_loss, running_loss_s, running_loss_u = 0.0, 0.0, 0.0
         running_supervised_acc = 0.0
-        for step, (x_s, y_s), (x_u) in enumerate(zip(supervised_dataloader, unsupervised_dataloader)):
-            x_s, y_s = x_s.to(device), y_s.to(device)    
+        for step, ((x_s, y_s), (x_u)) in enumerate(zip(supervised_dataloader, unsupervised_dataloader)):
+            x_s, y_s = x_s.to(device), y_s.to(device)
+            y_s_one_hot =  nn.functional.one_hot(y_s.long(), num_classes=10).float() 
             for i in range(len(x_u)):
                 x_u[i] = x_u[i].to(device)
             loss_final = 0
             
             # Calculate supervised loss
             y_pred_s = model(x_s)
-            loss_s = supervised_loss_fn(y_pred_s, y_s) * LAMBDA_S
+            loss_s = supervised_loss_fn(y_pred_s, y_s_one_hot) * LAMBDA_S
             supervised_acc = torch.sum(torch.argmax(y_pred_s, dim=1) == y_s).item() / len(y_s)
             loss_final += loss_s
             
@@ -132,12 +133,13 @@ def validation(model: nn.Module,
         progress_bar = None
     
     running_losses, running_accs = [], []
-    for step, (patchs, labels, thresholds, indices) in enumerate(val_dataloader):
-        patchs, labels = patchs.to(device), labels.to(device)
-        preds = model(patchs)
+    for step, (x, y_gts) in enumerate(val_dataloader):
+        x, y_gts = x.to(device), y_gts.to(device)
+        y_preds = model(x)
         
-        val_loss = CrossEntropyLoss()(preds, labels)
-        acc = torch.sum(torch.argmax(preds, dim=1) == labels).item() / len(labels)
+        y_gts_one_hot =  nn.functional.one_hot(y_gts.long(), num_classes=10).float()
+        val_loss = CrossEntropyLoss()(y_preds, y_gts_one_hot)
+        acc = torch.sum(torch.argmax(y_preds, dim=1) == y_gts).item() / len(y_gts)
     
         running_losses.append(val_loss.item())
         running_accs.append(acc)
