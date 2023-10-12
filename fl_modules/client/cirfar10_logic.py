@@ -22,7 +22,7 @@ def train_fixmatch(model: nn.Module,
                     optimizer: torch.optim.Optimizer,
                     num_epoch: int, 
                     device: torch.device,
-                    unsupervised_conf_thrs: float = 0.95,
+                    unsupervised_conf_thrs: float = 0.75,
                     ema: EMA = None,
                     batch_size = 10,
                     enable_progress_bar = False,
@@ -122,7 +122,6 @@ def train_normal(model: nn.Module,
                 optimizer: torch.optim.Optimizer,
                 num_epoch: int, 
                 device: torch.device,
-                unsupervised_conf_thrs: float = 0.95,
                 ema: EMA = None,
                 batch_size = 10,
                 enable_progress_bar = False,
@@ -131,7 +130,7 @@ def train_normal(model: nn.Module,
     model.train()
     optimizer.zero_grad()
     
-    avg_total_loss, avg_loss_s, avg_loss_u = 0.0, 0.0, 0.0
+    avg_total_loss = 0.0
     avg_acc = 0.0
     supervised_loss_fn = CrossEntropyLoss()
     # Calculate unsupervised loss    
@@ -145,7 +144,7 @@ def train_normal(model: nn.Module,
         else:
             progress_bar = None
 
-        running_total_loss, running_loss_s, running_loss_u = 0.0, 0.0, 0.0
+        running_total_loss = 0.0
         running_acc = 0.0
         for step, (x_s, y_s) in enumerate(dataloader):
             x_s, y_s = x_s.to(device), y_s.to(device)
@@ -153,7 +152,7 @@ def train_normal(model: nn.Module,
             
             # Calculate supervised loss
             y_pred_s = model(x_s)
-            loss = supervised_loss_fn(y_pred_s, y_s_one_hot) * LAMBDA_S
+            loss = supervised_loss_fn(y_pred_s, y_s_one_hot)
             acc = torch.sum(torch.argmax(y_pred_s, dim=1) == y_s).item() / len(y_s)
             
             loss.backward()
@@ -172,9 +171,7 @@ def train_normal(model: nn.Module,
             avg_acc = running_acc / (step + 1)
             if progress_bar is not None:
                 progress_bar.set_postfix(loss = avg_total_loss,
-                                         loss_s = avg_loss_s,
-                                        loss_u = avg_loss_u,
-                                        acc_s = avg_acc)
+                                        acc = avg_acc)
                 progress_bar.update()
         if progress_bar is not None:
             progress_bar.close()

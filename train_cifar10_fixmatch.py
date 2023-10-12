@@ -21,12 +21,14 @@ logger = logging.getLogger(__name__)
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--extra_info', default = '')
-    parser.add_argument('--train_set', default = 'fl_cmp_trainABC.txt')
-    parser.add_argument('--val_set', default = 'fl_cmp_valABC.txt')
-    parser.add_argument('--test_set', default = 'val.txt')
     parser.add_argument('--batch_size', type = int, default = 32)
     parser.add_argument('--num_epoch', type = int, default = 150)
     parser.add_argument('--lr', type = float, default = 0.001)
+    parser.add_argument('--optimizer', default = 'sgd')
+    parser.add_argument('--weight_decay', type = float, default = 1e-4)
+    parser.add_argument('--unsupervised_conf_thrs', type = float, default = 0.75)
+    parser.add_argument('--supervised_ratio', type = float, default = 0.1)
+    parser.add_argument('--supervised_augment', action='store_true', default=False)
     parser.add_argument('--seed', type = int, default = 1029)
     parser.add_argument('--model', default='fl_modules.model.fedmatch.resnet9.ResNet9')
     parser.add_argument('--merge_supervised', action='store_true', default=False)
@@ -63,6 +65,10 @@ if __name__ == '__main__':
     train_batch_size = args.batch_size
     val_batch_size = 64
     num_epoch = args.num_epoch
+    weight_decay = args.weight_decay
+    supervised_ratio = args.supervised_ratio
+    supervised_augment = args.supervised_augment
+    unsupervised_conf_thrs = args.unsupervised_conf_thrs
     merge_supervised = args.merge_supervised
     learning_rate = args.lr
     apply_ema = args.apply_ema
@@ -90,7 +96,10 @@ if __name__ == '__main__':
             model = checkpoint['model_structure']
         
         model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+        if args.optimizer == 'adam':
+            optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        elif args.optimizer == 'sgd':
+            optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if 'ema' in checkpoint:
             ema = EMA(model, decay = args.ema_decay)
@@ -110,7 +119,11 @@ if __name__ == '__main__':
         # Build new model
         model = build_instance(args.model)
         model = model.to(device)
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+        
+        if args.optimizer == 'adam':
+            optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        elif args.optimizer == 'sgd':
+            optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
         start_epoch = 0
         end_epoch = num_epoch
         # Register EMA
@@ -131,13 +144,16 @@ if __name__ == '__main__':
         write_yaml(os.path.join(exp_root, 'setting.yaml'), vars(args))
     
     # Get dataset
-    train_s, train_u, val_set, test_set = prepare_cifar10_datasets(train_val_test_split = [0.8, 0.1, 0.1], seed=seed, num_clients=1)
+    train_s, train_u, val_set, test_set = prepare_cifar10_datasets(train_val_test_split = [0.8, 0.1, 0.1], 
+                                                                   s_u_split=[supervised_ratio, 1.0 - supervised_ratio],
+                                                                   seed=seed, 
+                                                                   num_clients=1)
     train_s = train_s[0]
     train_u = train_u[0]
     train_s_dataset = Cifar10SupervisedDataset(dataset_type = 'train',
                                                x = train_s['x'], 
                                                y = train_s['y'], 
-                                               do_augment = True)
+                                               do_augment = supervised_augment)
     if merge_supervised:
         train_u['x'] = np.concatenate([train_u['x'], train_s['x'].copy()])
     
@@ -167,6 +183,7 @@ if __name__ == '__main__':
                                         optimizer = optimizer,
                                         num_epoch = 1,
                                         batch_size = train_batch_size,
+                                        unsupervised_conf_thrs=unsupervised_conf_thrs,
                                         device = device,
                                         enable_progress_bar=True,
                                         log_metric=True,
@@ -177,7 +194,7 @@ if __name__ == '__main__':
         if ema is not None:
             ema.apply_shadow()
         
-        if epoch != 0 and epoch % 10 == 0:
+        if (epoch != 0 and epoch % 50 == 0) or (epoch == end_epoch - 1):
             save_states(model = model, 
                         optimizer = optimizer, 
                         save_path = os.path.join(saving_model_root, f'{epoch + 1}.pth'),
