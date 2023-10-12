@@ -9,11 +9,11 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
 from fl_modules.client.cirfar10_logic import train_fixmatch, validation, test
-from fl_modules.dataset.cifar10.cifar10_dataset import Cifar10SupervisedDataset, Cifar10UnsupervisedDataset
-from fl_modules.dataset.cifar10.utils import prepare_cifar10_datasets
+from fl_modules.dataset.cifar10_dataset import Cifar10SupervisedDataset, Cifar10UnsupervisedDataset
+from fl_modules.dataset.utils import prepare_cifar10_datasets
 from fl_modules.model.ema import EMA
 
-from fl_modules.utilities import build_instance, load_yaml, get_local_time_in_taiwan, setup_logging, write_yaml, init_seed
+from fl_modules.utilities import build_instance, get_local_time_in_taiwan, setup_logging, write_yaml, init_seed
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def get_parser():
     parser.add_argument('--supervised_ratio', type = float, default = 0.1)
     parser.add_argument('--supervised_augment', action='store_true', default=False)
     parser.add_argument('--seed', type = int, default = 1029)
-    parser.add_argument('--model', default='fl_modules.model.fedmatch.resnet9.ResNet9')
+    parser.add_argument('--model', default='fl_modules.model.resnet9.ResNet9')
     parser.add_argument('--merge_supervised', action='store_true', default=False)
     parser.add_argument('--apply_ema', action='store_true', default=False)
     parser.add_argument('--ema_decay', type=float, default=0.999)
@@ -151,21 +151,18 @@ if __name__ == '__main__':
     train_s = train_s[0]
     train_u = train_u[0]
     train_s_dataset = Cifar10SupervisedDataset(dataset_type = 'train',
-                                               x = train_s['x'], 
-                                               y = train_s['y'], 
+                                               data = train_s,
                                                do_augment = supervised_augment)
     if merge_supervised:
         train_u['x'] = np.concatenate([train_u['x'], train_s['x'].copy()])
     
     train_u_dataset = Cifar10UnsupervisedDataset(dataset_type = 'train',
-                                                x = train_u['x'],
-                                                targets=['weak', 'strong'])
+                                                 data = train_u,
+                                                targets = ['weak', 'strong'])
     val_dataset = Cifar10SupervisedDataset(dataset_type = 'val', 
-                                             x = val_set['x'], 
-                                             y = val_set['y'])
+                                           data = val_set)
     test_dataset = Cifar10SupervisedDataset(dataset_type = 'test',
-                                            x = test_set['x'],
-                                            y = test_set['y'])
+                                            data = test_set)
 
     # Training
     writer = SummaryWriter(log_dir = os.path.join(exp_root, 'tensorboard'))

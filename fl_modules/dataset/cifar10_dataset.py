@@ -1,12 +1,8 @@
-import os
-import random
 import numpy as np
-from PIL import Image
 from numpy.typing import NDArray
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Union
 
 import torch
-import torch.nn as nn
 from torch.utils.data import Dataset
 from torchvision import transforms
 from .augmentation import strong_augment, weak_augment
@@ -14,20 +10,23 @@ from .augmentation import strong_augment, weak_augment
 class Cifar10UnsupervisedDataset(Dataset):
     def __init__(self,
                 dataset_type: str,
-                x: NDArray[np.uint8],
+                data: Union[Dict[str, np.ndarray], str],
                 targets: Tuple[str, str]):
         """
         Args:
             dataset_type:
                 'train' or 'test'
             x:
-                A numpy array of shape (N, 32, 32, 3)
+                A numpy array of shape (N, 32, 32, 3) or a path to the numpy array
             targets:
                 A tuple of (augment_type_1, augment_type_2), where augment_type_i is either 'strong', 'weak', 'none'
         """
         super(Cifar10UnsupervisedDataset, self).__init__()
         self.dataset_type = dataset_type
-        self.x = x
+        
+        if isinstance(data, str):
+            data = np.load(data)
+        self.x = data['x']
         self.targets = targets
     
     def __getitem__(self, index: int) -> List[torch.Tensor]:
@@ -53,14 +52,16 @@ class Cifar10UnsupervisedDataset(Dataset):
 class Cifar10SupervisedDataset(Dataset):
     def __init__(self,
                 dataset_type: str,
-                x: NDArray[np.uint8],
-                y: NDArray[np.int32],
+                data: Union[Dict[str, np.ndarray], str],
                 do_augment: bool = True) -> None:
         super(Cifar10SupervisedDataset, self).__init__()
         self.dataset_type = dataset_type
 
-        self.x = x
-        self.y = torch.from_numpy(y).long()
+        if isinstance(data, str):
+            data = np.load(data)
+        
+        self.x = data['x']
+        self.y = torch.from_numpy(data['y']).long()
         self.do_augment = do_augment
     
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:

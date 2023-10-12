@@ -32,6 +32,8 @@ class ResNet9(nn.Module):
         self.flatten = nn.Flatten()
         self.fc = nn.Linear(512, num_classes, bias=False)
 
+        self._weight_init()
+
     def forward(self, x):
         out = self.conv1(x)
         out = self.conv2(out)
@@ -48,3 +50,17 @@ class ResNet9(nn.Module):
         out = self.fc(out)
         out = F.softmax(out, dim=1)
         return out
+    
+    def _weight_init(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
+                m.weight.data.normal_(0, 0.01)
+                m.bias.data.zero_()

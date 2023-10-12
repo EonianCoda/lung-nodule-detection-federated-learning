@@ -9,25 +9,25 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
 from fl_modules.client.cirfar10_logic import train_normal, validation, test
-from fl_modules.dataset.cifar10.cifar10_dataset import Cifar10SupervisedDataset
-from fl_modules.dataset.cifar10.utils import prepare_cifar10_datasets
+from fl_modules.dataset.cifar10_dataset import Cifar10SupervisedDataset
+from fl_modules.dataset.utils import prepare_cifar10_datasets
 from fl_modules.model.ema import EMA
 
-from fl_modules.utilities import build_instance, load_yaml, get_local_time_in_taiwan, setup_logging, write_yaml, init_seed
+from fl_modules.utilities import build_instance, get_local_time_in_taiwan, setup_logging, write_yaml, init_seed
 
 logger = logging.getLogger(__name__)
 
 
 def get_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--extra_info', default = '')
+    parser.add_argument('--exp_name', default = '')
     parser.add_argument('--batch_size', type = int, default = 64)
-    parser.add_argument('--num_epoch', type = int, default = 150)
-    parser.add_argument('--lr', type = float, default = 0.001)
+    parser.add_argument('--num_epoch', type = int, default = 200)
+    parser.add_argument('--lr', type = float, default = 0.05)
     parser.add_argument('--optimizer', default = 'sgd')
     parser.add_argument('--weight_decay', type = float, default = 1e-4)
     parser.add_argument('--seed', type = int, default = 1029)
-    parser.add_argument('--model', default='fl_modules.model.fedmatch.resnet9.ResNet9')
+    parser.add_argument('--model', default='fl_modules.model.resnet9.ResNet9')
     parser.add_argument('--apply_ema', action='store_true', default=False)
     parser.add_argument('--ema_decay', type=float, default=0.999)
     parser.add_argument('--resume_model_path', type=str, default='')
@@ -57,7 +57,7 @@ def save_states(model: nn.Module,
 if __name__ == '__main__':
     args = get_parser()
     seed = args.seed
-    extra_info = args.extra_info
+    exp_name = args.exp_name
     train_batch_size = args.batch_size
     val_batch_size = 64
     num_epoch = args.num_epoch
@@ -76,8 +76,8 @@ if __name__ == '__main__':
                                             cur_time.hour, 
                                             cur_time.minute)
     exp_name = timestamp
-    if extra_info != '':
-        exp_name = exp_name + f'_{extra_info}'
+    if exp_name != '':
+        exp_name = exp_name + f'_{exp_name}'
     exp_root = f'./save/cifar10_normal/{exp_name}'
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -132,17 +132,13 @@ if __name__ == '__main__':
     
     # Get dataset
     train_s, train_u, val_set, test_set = prepare_cifar10_datasets(train_val_test_split = [0.8, 0.1, 0.1], s_u_split=[1.0, 0.0], num_clients = 1, seed=seed)
-    train_s = train_s[0]
     train_dataset = Cifar10SupervisedDataset(dataset_type = 'train',
-                                               x = train_s['x'], 
-                                               y = train_s['y'], 
-                                               do_augment = True)
+                                            data = train_s[0],
+                                            do_augment = True)
     val_dataset = Cifar10SupervisedDataset(dataset_type = 'val', 
-                                             x = val_set['x'], 
-                                             y = val_set['y'])
+                                           data = val_set)
     test_dataset = Cifar10SupervisedDataset(dataset_type = 'test',
-                                            x = test_set['x'],
-                                            y = test_set['y'])
+                                            data = test_set)
 
     # Training
     writer = SummaryWriter(log_dir = os.path.join(exp_root, 'tensorboard'))
