@@ -25,12 +25,12 @@ def get_parser():
     parser.add_argument('--num_epoch', type = int, default = 150)
     parser.add_argument('--lr', type = float, default = 0.001)
     parser.add_argument('--optimizer', default = 'sgd')
-    parser.add_argument('--weight_decay', type = float, default = 1e-4)
-    parser.add_argument('--unsupervised_conf_thrs', type = float, default = 0.75)
+    parser.add_argument('--weight_decay', type = float, default = 0.0005)
+    parser.add_argument('--unsupervised_conf_thrs', type = float, default = 0.95)
     parser.add_argument('--supervised_ratio', type = float, default = 0.1)
     parser.add_argument('--supervised_augment', action='store_true', default=False)
     parser.add_argument('--seed', type = int, default = 1029)
-    parser.add_argument('--model', default='fl_modules.model.resnet9.ResNet9')
+    parser.add_argument('--model', default='fl_modules.model.wide_resnet.WideResNet')
     parser.add_argument('--merge_supervised', action='store_true', default=False)
     parser.add_argument('--apply_ema', action='store_true', default=False)
     parser.add_argument('--ema_decay', type=float, default=0.999)
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     seed = args.seed
     extra_info = args.extra_info
     train_batch_size = args.batch_size
-    val_batch_size = 64
+    val_batch_size = 64 if train_batch_size <= 64 else train_batch_size
     num_epoch = args.num_epoch
     weight_decay = args.weight_decay
     supervised_ratio = args.supervised_ratio
@@ -74,8 +74,10 @@ if __name__ == '__main__':
     apply_ema = args.apply_ema
     resume_model_path = args.resume_model_path
     best_model_metric_name = args.best_model_metric_name
+    
     # Set seed
     init_seed(seed)
+    
     # Experiment Name
     cur_time = get_local_time_in_taiwan()
     timestamp = "[%d-%02d-%02d-%02d%02d]" % (cur_time.year, 
@@ -89,6 +91,7 @@ if __name__ == '__main__':
     exp_root = f'./save/cifar10_fixmatch/{exp_name}'
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    
     # Build model and optimizer
     if resume_model_path != '': # Resume model
         checkpoint = torch.load(resume_model_path, map_location = device)
@@ -99,7 +102,7 @@ if __name__ == '__main__':
         if args.optimizer == 'adam':
             optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
         elif args.optimizer == 'sgd':
-            optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+            optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if 'ema' in checkpoint:
             ema = EMA(model, decay = args.ema_decay)
