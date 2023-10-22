@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def get_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--extra_info', default = '')
+    parser.add_argument('--exp_name', default = '')
     parser.add_argument('--batch_size', type = int, default = 32)
     parser.add_argument('--num_epoch', type = int, default = 150)
     parser.add_argument('--lr', type = float, default = 0.001)
@@ -61,7 +61,7 @@ def save_states(model: nn.Module,
 if __name__ == '__main__':
     args = get_parser()
     seed = args.seed
-    extra_info = args.extra_info
+    exp_name = args.exp_name
     train_batch_size = args.batch_size
     val_batch_size = 64 if train_batch_size <= 64 else train_batch_size
     num_epoch = args.num_epoch
@@ -85,9 +85,10 @@ if __name__ == '__main__':
                                             cur_time.day, 
                                             cur_time.hour, 
                                             cur_time.minute)
-    exp_name = timestamp
-    if extra_info != '':
-        exp_name = exp_name + f'_{extra_info}'
+    if exp_name != '':
+        exp_name = timestamp + f'_{exp_name}'
+    else:
+        exp_name = timestamp
     exp_root = f'./save/cifar10_fixmatch/{exp_name}'
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -136,7 +137,6 @@ if __name__ == '__main__':
         else:
             ema = None
     
-
     saving_model_root = os.path.join(exp_root, 'model')
     log_txt_path = os.path.join(exp_root, 'log.txt')
     setup_logging(log_file=log_txt_path)
@@ -168,6 +168,8 @@ if __name__ == '__main__':
                                             data = test_set)
 
     # Training
+    num_of_total_training_steps = (len(train_s_dataset) / train_batch_size) * num_epoch
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = num_of_total_training_steps, eta_min=0)
     writer = SummaryWriter(log_dir = os.path.join(exp_root, 'tensorboard'))
     best_epoch = 0
     best_metric = 0.0
@@ -181,6 +183,7 @@ if __name__ == '__main__':
                                        dataset_s = train_s_dataset,
                                         dataset_u = train_u_dataset,
                                         optimizer = optimizer,
+                                        scheduler = scheduler,
                                         num_epoch = 1,
                                         batch_size = train_batch_size,
                                         unsupervised_conf_thrs=unsupervised_conf_thrs,

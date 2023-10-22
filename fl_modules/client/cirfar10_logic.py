@@ -12,14 +12,15 @@ from fl_modules.model.ema import EMA
 logger = logging.getLogger(__name__)
 PRINT_EVERY = 1000
 
-LAMBDA_S = 10 # unsupervised learning
-LAMBDA_I = 1e-2 # inter-client consistency
-LAMBDA_A = 1e-2 # agreement-based pseudo labeling
+LAMBDA_S = 1 # supervised learning loss ratio
+LAMBDA_I = 1 # inter-client consistency
+LAMBDA_A = 1 # unsupervised learning loss ratio
 
 def train_fixmatch(model: nn.Module, 
                     dataset_s: Dataset,
                     dataset_u: Dataset, 
                     optimizer: torch.optim.Optimizer,
+                    scheduler: torch.optim.lr_scheduler._LRScheduler,
                     num_epoch: int, 
                     device: torch.device,
                     unsupervised_conf_thrs: float = 0.75,
@@ -77,7 +78,7 @@ def train_fixmatch(model: nn.Module,
             loss_final.backward()
             optimizer.step()
             optimizer.zero_grad()
-            
+            scheduler.step()
             # Update EMA
             if ema is not None:
                 ema.update()
