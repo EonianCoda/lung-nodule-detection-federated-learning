@@ -88,7 +88,19 @@ if __name__ == '__main__':
             model = checkpoint['model_structure']
         
         model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+        
+        no_decay = ['bias', 'bn']
+        grouped_parameters = [
+            {'params': [p for n, p in model.named_parameters() if not any(
+                nd in n for nd in no_decay)], 'weight_decay': args.wdecay},
+            {'params': [p for n, p in model.named_parameters() if any(
+                nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        ]
+        if args.optimizer == 'adam':
+            optimizer = optim.Adam(grouped_parameters, lr=learning_rate, weight_decay=weight_decay)
+        elif args.optimizer == 'sgd':
+            optimizer = optim.SGD(grouped_parameters, lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
+        
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if 'ema' in checkpoint:
             ema = EMA(model, decay = args.ema_decay)
@@ -108,10 +120,18 @@ if __name__ == '__main__':
         # Build new model
         model = build_instance(args.model)
         model = model.to(device)
+
+        no_decay = ['bias', 'bn']
+        grouped_parameters = [
+            {'params': [p for n, p in model.named_parameters() if not any(
+                nd in n for nd in no_decay)], 'weight_decay': args.wdecay},
+            {'params': [p for n, p in model.named_parameters() if any(
+                nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        ]
         if args.optimizer == 'adam':
-            optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+            optimizer = optim.Adam(grouped_parameters, lr=learning_rate, weight_decay=weight_decay)
         elif args.optimizer == 'sgd':
-            optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+            optimizer = optim.SGD(grouped_parameters, lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
         start_epoch = 0
         end_epoch = num_epoch
         # Register EMA

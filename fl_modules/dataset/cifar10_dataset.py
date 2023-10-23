@@ -5,7 +5,31 @@ from typing import Dict, Tuple, List, Union
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
-from .augmentation import strong_augment, weak_augment
+
+from PIL import Image
+from .randaug import RandAugmentMC
+
+cifar10_mean = (0.4914, 0.4822, 0.4465)
+cifar10_std = (0.2471, 0.2435, 0.2616)
+
+def normalize() -> transforms.Compose:
+    return transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(cifar10_mean, cifar10_std)
+    ])
+
+def weak_augment() -> transforms.Compose:
+    return transforms.Compose([transforms.RandomHorizontalFlip(),
+                                 transforms.RandomCrop(size=32,
+                                                    padding=int(32*0.125),
+                                                    padding_mode='reflect')])
+
+def strong_augment(img_size: int = 32) -> transforms.Compose:
+    return transforms.Compose([transforms.RandomHorizontalFlip(),
+                                transforms.RandomCrop(size=img_size,
+                                                    padding=int(img_size*0.125),
+                                                    padding_mode='reflect'),
+                                RandAugmentMC(n=2, m=10)])
 
 class Cifar10UnsupervisedDataset(Dataset):
     def __init__(self,
@@ -28,7 +52,11 @@ class Cifar10UnsupervisedDataset(Dataset):
             data = np.load(data)
         self.x = data['x']
         self.targets = targets
-    
+        
+        self.weak = weak_augment()
+        self.strong = strong_augment()
+        self.normalize = normalize()
+        
     def __getitem__(self, index: int) -> List[torch.Tensor]:
         x = self.x[index]
         data = []
@@ -38,12 +66,12 @@ class Cifar10UnsupervisedDataset(Dataset):
     
     def augment(self, image: np.ndarray, augment_type: str) -> np.ndarray:
         image = image.copy()
-        if augment_type == 'none':
-            image = transforms.ToTensor()(image)
-        elif augment_type == 'strong':
-            image = strong_augment(image)
+        if augment_type == 'strong':
+            image = self.strong(image)
         elif augment_type == 'weak':
-            image = weak_augment(image)
+            image = self.weak(image)
+            
+        image = self.normalize(image)
         return image
     
     def __len__(self) -> int:
@@ -56,14 +84,17 @@ class Cifar10SupervisedDataset(Dataset):
                 do_augment: bool = True) -> None:
         super(Cifar10SupervisedDataset, self).__init__()
         self.dataset_type = dataset_type
-
         if isinstance(data, str):
             data = np.load(data)
         
         self.x = data['x']
         self.y = torch.from_numpy(data['y']).long()
+        
+        # Augmentation        
         self.do_augment = do_augment
-    
+        self.normalize = normalize()
+        self.weak = weak_augment()
+        
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor]:
         x = self.x[index]
         y = self.y[index]
@@ -71,10 +102,9 @@ class Cifar10SupervisedDataset(Dataset):
         return x, y
     
     def augment(self, image: np.ndarray) -> np.ndarray:
-        if self.dataset_type != 'train' or not self.do_augment:
-            image = transforms.ToTensor()(image)
-        else:
-            image = weak_augment(image)
+        if self.dataset_type == 'train' and self.do_augment:
+            image = self.weak(image)
+        image = self.normalize(image)
         return image
     
     def __len__(self) -> int:

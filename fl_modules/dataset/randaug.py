@@ -1,131 +1,220 @@
-from PIL import Image
-import matplotlib.pyplot as plt
-import numpy as np
-from PIL import Image, ImageEnhance, ImageOps
-import numpy as np
+# code in this file is adpated from
+# https://github.com/ildoonet/pytorch-randaugment/blob/master/RandAugment/augmentations.py
+# https://github.com/google-research/fixmatch/blob/master/third_party/auto_augment/augmentations.py
+# https://github.com/google-research/fixmatch/blob/master/libml/ctaugment.py
+import logging
 import random
 
-'''
-Reference: https://github.com/heartInsert/randaugment
-'''
-class RandAugment():
-    def __init__(self, N=None, M=None):
-        # Numbers = N
-        # max_Magnitude = M
-        self.transforms = ['autocontrast', 'equalize', 'rotate', 'solarize', 'color', 'posterize',
-                           'contrast', 'brightness', 'sharpness', 'shearX', 'shearY', 'translateX', 'translateY']
-        # if Numbers is None:
-        #     self.Numbers = len(self.transforms) // 2
-        # else:
-        #     self.Numbers = Numbers
-        # if max_Magnitude is None:
-        #     self.max_Magnitude = 10
-        # else:
-        #     self.max_Magnitude = max_Magnitude
-        fillcolor = 128
-        self.ranges = {
-            # these  Magnitude   range , you  must test  it  yourself , see  what  will happen  after these  operation ,
-            # it is no  need to obey  the value  in  autoaugment.py
-            "shearX": np.linspace(0, 0.3, 10),
-            "shearY": np.linspace(0, 0.3, 10),
-            "translateX": np.linspace(0, 0.2, 10),
-            "translateY": np.linspace(0, 0.2, 10),
-            "rotate": np.linspace(0, 360, 10),
-            "color": np.linspace(0.0, 0.9, 10),
-            "posterize": np.round(np.linspace(8, 4, 10), 0).astype(np.int64),
-            "solarize": np.linspace(256, 231, 10),
-            "contrast": np.linspace(0.0, 0.5, 10),
-            "sharpness": np.linspace(0.0, 0.9, 10),
-            "brightness": np.linspace(0.0, 0.3, 10),
-            "autocontrast": [0] * 10,
-            "equalize": [0] * 10,           
-            "invert": [0] * 10
-        }
-        self.func = {
-            "shearX": lambda img, magnitude: img.transform(
-                img.size, Image.AFFINE, (1, magnitude * random.choice([-1, 1]), 0, 0, 1, 0),
-                Image.BICUBIC, fill=fillcolor),
-            "shearY": lambda img, magnitude: img.transform(
-                img.size, Image.AFFINE, (1, 0, 0, magnitude * random.choice([-1, 1]), 1, 0),
-                Image.BICUBIC, fill=fillcolor),
-            "translateX": lambda img, magnitude: img.transform(
-                img.size, Image.AFFINE, (1, 0, magnitude * img.size[0] * random.choice([-1, 1]), 0, 1, 0),
-                fill=fillcolor),
-            "translateY": lambda img, magnitude: img.transform(
-                img.size, Image.AFFINE, (1, 0, 0, 0, 1, magnitude * img.size[1] * random.choice([-1, 1])),
-                fill=fillcolor),
-            "rotate": lambda img, magnitude: self.rotate_with_fill(img, magnitude),
-            # "rotate": lambda img, magnitude: img.rotate(magnitude * random.choice([-1, 1])),
-            "color": lambda img, magnitude: ImageEnhance.Color(img).enhance(1 + magnitude * random.choice([-1, 1])),
-            "posterize": lambda img, magnitude: ImageOps.posterize(img, magnitude),
-            "solarize": lambda img, magnitude: ImageOps.solarize(img, magnitude),
-            "contrast": lambda img, magnitude: ImageEnhance.Contrast(img).enhance(
-                1 + magnitude * random.choice([-1, 1])),
-            "sharpness": lambda img, magnitude: ImageEnhance.Sharpness(img).enhance(
-                1 + magnitude * random.choice([-1, 1])),
-            "brightness": lambda img, magnitude: ImageEnhance.Brightness(img).enhance(
-                1 + magnitude * random.choice([-1, 1])),
-            "autocontrast": lambda img, magnitude: ImageOps.autocontrast(img),
-            "equalize": lambda img, magnitude: img,
-            "invert": lambda img, magnitude: ImageOps.invert(img)
-        }
+import numpy as np
+import PIL
+import PIL.ImageOps
+import PIL.ImageEnhance
+import PIL.ImageDraw
+from PIL import Image
 
-    def rand_augment(self):
-        """Generate a set of distortions.
-             Args:
-             N: Number of augmentation transformations to apply sequentially. N  is len(transforms)/2  will be best
-             M: Max_Magnitude for all the transformations. should be  <= self.max_Magnitude """
+logger = logging.getLogger(__name__)
 
-        # M = np.random.randint(0, self.max_Magnitude, self.Numbers)
-        M = np.random.randint(0, self.M, self.N)
-        sampled_ops = np.random.choice(self.transforms, self.N)
-        return [(op, Magnitude) for (op, Magnitude) in zip(sampled_ops, M)]
-
-    def __call__(self, image, N=None, M=None):
-
-        self.N = len(self.transforms)//2 if N is None else N
-        self.M = 10 if M is None else M
-
-        operations = self.rand_augment()
-        for (op_name, M) in operations:
-            operation = self.func[op_name]
-            mag = self.ranges[op_name][M]
-            image = operation(image, mag)
-        return image
-
-    def rotate_with_fill(self, img, magnitude):
-        #  I  don't know why  rotate  must change to RGBA , it is  copy  from Autoaugment - pytorch
-        rot = img.convert("RGBA").rotate(magnitude)
-        return Image.composite(rot, Image.new("RGBA", rot.size, (128,) * 4), rot).convert(img.mode)
-
-    def test_single_operation(self, image, op_name, M=-1):
-        '''
-        :param image: image
-        :param op_name: operation name in   self.transforms
-        :param M: -1  stands  for the  max   Magnitude  in  there operation
-        :return:
-        '''
-        operation = self.func[op_name]
-        mag = self.ranges[op_name][M]
-        image = operation(image, mag)
-        return image
+PARAMETER_MAX = 10
 
 
-if __name__ == '__main__':
-    # # this  is  for  call the whole fun
-    # img_augment = Rand_Augment()
-    # img_origal = Image.open(r'0a38b552372d.png')
-    # img_final = img_augment(img_origal)
-    # plt.imshow(img_final)
-    # plt.show()
-    # print('how to  call')
+def AutoContrast(img, **kwarg):
+    return PIL.ImageOps.autocontrast(img)
 
-    # this  is for  a  single  fun  you  want to test
-    img_augment = Rand_Augment()
-    img_origal = Image.open(r'0bfdedaa60b54078ab0fc3bc6582aa90.jpg')
-    for i in range(0, 10):
-        img_final = img_augment.test_single_operation(img_origal, 'invert', M=i)
-        plt.subplot(5, 2, i + 1)
-        plt.imshow(img_final)
-    plt.show()
-    print('how  to test')
+
+def Brightness(img, v, max_v, bias=0):
+    v = _float_parameter(v, max_v) + bias
+    return PIL.ImageEnhance.Brightness(img).enhance(v)
+
+
+def Color(img, v, max_v, bias=0):
+    v = _float_parameter(v, max_v) + bias
+    return PIL.ImageEnhance.Color(img).enhance(v)
+
+
+def Contrast(img, v, max_v, bias=0):
+    v = _float_parameter(v, max_v) + bias
+    return PIL.ImageEnhance.Contrast(img).enhance(v)
+
+
+def Cutout(img, v, max_v, bias=0):
+    if v == 0:
+        return img
+    v = _float_parameter(v, max_v) + bias
+    v = int(v * min(img.size))
+    return CutoutAbs(img, v)
+
+
+def CutoutAbs(img, v, **kwarg):
+    w, h = img.size
+    x0 = np.random.uniform(0, w)
+    y0 = np.random.uniform(0, h)
+    x0 = int(max(0, x0 - v / 2.))
+    y0 = int(max(0, y0 - v / 2.))
+    x1 = int(min(w, x0 + v))
+    y1 = int(min(h, y0 + v))
+    xy = (x0, y0, x1, y1)
+    # gray
+    color = (127, 127, 127)
+    img = img.copy()
+    PIL.ImageDraw.Draw(img).rectangle(xy, color)
+    return img
+
+
+def Equalize(img, **kwarg):
+    return PIL.ImageOps.equalize(img)
+
+
+def Identity(img, **kwarg):
+    return img
+
+
+def Invert(img, **kwarg):
+    return PIL.ImageOps.invert(img)
+
+
+def Posterize(img, v, max_v, bias=0):
+    v = _int_parameter(v, max_v) + bias
+    return PIL.ImageOps.posterize(img, v)
+
+
+def Rotate(img, v, max_v, bias=0):
+    v = _int_parameter(v, max_v) + bias
+    if random.random() < 0.5:
+        v = -v
+    return img.rotate(v)
+
+
+def Sharpness(img, v, max_v, bias=0):
+    v = _float_parameter(v, max_v) + bias
+    return PIL.ImageEnhance.Sharpness(img).enhance(v)
+
+
+def ShearX(img, v, max_v, bias=0):
+    v = _float_parameter(v, max_v) + bias
+    if random.random() < 0.5:
+        v = -v
+    return img.transform(img.size, PIL.Image.AFFINE, (1, v, 0, 0, 1, 0))
+
+
+def ShearY(img, v, max_v, bias=0):
+    v = _float_parameter(v, max_v) + bias
+    if random.random() < 0.5:
+        v = -v
+    return img.transform(img.size, PIL.Image.AFFINE, (1, 0, 0, v, 1, 0))
+
+
+def Solarize(img, v, max_v, bias=0):
+    v = _int_parameter(v, max_v) + bias
+    return PIL.ImageOps.solarize(img, 256 - v)
+
+
+def SolarizeAdd(img, v, max_v, bias=0, threshold=128):
+    v = _int_parameter(v, max_v) + bias
+    if random.random() < 0.5:
+        v = -v
+    img_np = np.array(img).astype(np.int)
+    img_np = img_np + v
+    img_np = np.clip(img_np, 0, 255)
+    img_np = img_np.astype(np.uint8)
+    img = Image.fromarray(img_np)
+    return PIL.ImageOps.solarize(img, threshold)
+
+
+def TranslateX(img, v, max_v, bias=0):
+    v = _float_parameter(v, max_v) + bias
+    if random.random() < 0.5:
+        v = -v
+    v = int(v * img.size[0])
+    return img.transform(img.size, PIL.Image.AFFINE, (1, 0, v, 0, 1, 0))
+
+
+def TranslateY(img, v, max_v, bias=0):
+    v = _float_parameter(v, max_v) + bias
+    if random.random() < 0.5:
+        v = -v
+    v = int(v * img.size[1])
+    return img.transform(img.size, PIL.Image.AFFINE, (1, 0, 0, 0, 1, v))
+
+
+def _float_parameter(v, max_v):
+    return float(v) * max_v / PARAMETER_MAX
+
+
+def _int_parameter(v, max_v):
+    return int(v * max_v / PARAMETER_MAX)
+
+
+def fixmatch_augment_pool():
+    # FixMatch paper
+    augs = [(AutoContrast, None, None),
+            (Brightness, 0.9, 0.05),
+            (Color, 0.9, 0.05),
+            (Contrast, 0.9, 0.05),
+            (Equalize, None, None),
+            (Identity, None, None),
+            (Posterize, 4, 4),
+            (Rotate, 30, 0),
+            (Sharpness, 0.9, 0.05),
+            (ShearX, 0.3, 0),
+            (ShearY, 0.3, 0),
+            (Solarize, 256, 0),
+            (TranslateX, 0.3, 0),
+            (TranslateY, 0.3, 0)]
+    return augs
+
+
+def my_augment_pool():
+    # Test
+    augs = [(AutoContrast, None, None),
+            (Brightness, 1.8, 0.1),
+            (Color, 1.8, 0.1),
+            (Contrast, 1.8, 0.1),
+            (Cutout, 0.2, 0),
+            (Equalize, None, None),
+            (Invert, None, None),
+            (Posterize, 4, 4),
+            (Rotate, 30, 0),
+            (Sharpness, 1.8, 0.1),
+            (ShearX, 0.3, 0),
+            (ShearY, 0.3, 0),
+            (Solarize, 256, 0),
+            (SolarizeAdd, 110, 0),
+            (TranslateX, 0.45, 0),
+            (TranslateY, 0.45, 0)]
+    return augs
+
+
+class RandAugmentPC(object):
+    def __init__(self, n, m):
+        assert n >= 1
+        assert 1 <= m <= 10
+        self.n = n
+        self.m = m
+        self.augment_pool = my_augment_pool()
+
+    def __call__(self, img):
+        ops = random.choices(self.augment_pool, k=self.n)
+        for op, max_v, bias in ops:
+            prob = np.random.uniform(0.2, 0.8)
+            if random.random() + prob >= 1:
+                img = op(img, v=self.m, max_v=max_v, bias=bias)
+        img = CutoutAbs(img, int(32*0.5))
+        return img
+
+
+class RandAugmentMC(object):
+    def __init__(self, n, m):
+        assert n >= 1
+        assert 1 <= m <= 10
+        self.n = n
+        self.m = m
+        self.augment_pool = fixmatch_augment_pool()
+
+    def __call__(self, img):
+        ops = random.choices(self.augment_pool, k=self.n)
+        for op, max_v, bias in ops:
+            v = np.random.randint(1, self.m)
+            if random.random() < 0.5:
+                img = op(img, v=v, max_v=max_v, bias=bias)
+        img = CutoutAbs(img, int(32*0.5))
+        return img

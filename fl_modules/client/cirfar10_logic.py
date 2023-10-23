@@ -78,7 +78,8 @@ def train_fixmatch(model: nn.Module,
             loss_final.backward()
             optimizer.step()
             optimizer.zero_grad()
-            scheduler.step()
+            if scheduler is not None:
+                scheduler.step()
             # Update EMA
             if ema is not None:
                 ema.update()

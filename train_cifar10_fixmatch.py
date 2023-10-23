@@ -21,15 +21,16 @@ logger = logging.getLogger(__name__)
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--exp_name', default = '')
-    parser.add_argument('--batch_size', type = int, default = 32)
-    parser.add_argument('--num_epoch', type = int, default = 150)
-    parser.add_argument('--lr', type = float, default = 0.001)
+    parser.add_argument('--batch_size', type = int, default = 64)
+    parser.add_argument('--num_epoch', type = int, default = 200)
+    parser.add_argument('--lr', type = float, default = 0.03)
     parser.add_argument('--optimizer', default = 'sgd')
     parser.add_argument('--weight_decay', type = float, default = 0.0005)
     parser.add_argument('--unsupervised_conf_thrs', type = float, default = 0.95)
-    parser.add_argument('--supervised_ratio', type = float, default = 0.1)
+    parser.add_argument('--supervised_ratio', type = float, default = 0.05)
     parser.add_argument('--supervised_augment', action='store_true', default=False)
     parser.add_argument('--seed', type = int, default = 1029)
+    parser.add_argument('--scheduler', action='store_true', default=False)
     parser.add_argument('--model', default='fl_modules.model.wide_resnet.WideResNet')
     parser.add_argument('--merge_supervised', action='store_true', default=False)
     parser.add_argument('--apply_ema', action='store_true', default=False)
@@ -99,11 +100,17 @@ if __name__ == '__main__':
         if 'model_structure' in checkpoint:
             model = checkpoint['model_structure']
         
-        model.load_state_dict(checkpoint['model_state_dict'])
+        no_decay = ['bias', 'bn']
+        grouped_parameters = [
+            {'params': [p for n, p in model.named_parameters() if not any(
+                nd in n for nd in no_decay)], 'weight_decay': args.wdecay},
+            {'params': [p for n, p in model.named_parameters() if any(
+                nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        ]
         if args.optimizer == 'adam':
-            optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+            optimizer = optim.Adam(grouped_parameters, lr=learning_rate, weight_decay=weight_decay)
         elif args.optimizer == 'sgd':
-            optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
+            optimizer = optim.SGD(grouped_parameters, lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if 'ema' in checkpoint:
             ema = EMA(model, decay = args.ema_decay)
@@ -124,10 +131,17 @@ if __name__ == '__main__':
         model = build_instance(args.model)
         model = model.to(device)
         
+        no_decay = ['bias', 'bn']
+        grouped_parameters = [
+            {'params': [p for n, p in model.named_parameters() if not any(
+                nd in n for nd in no_decay)], 'weight_decay': args.wdecay},
+            {'params': [p for n, p in model.named_parameters() if any(
+                nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        ]
         if args.optimizer == 'adam':
-            optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+            optimizer = optim.Adam(grouped_parameters, lr=learning_rate, weight_decay=weight_decay)
         elif args.optimizer == 'sgd':
-            optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+            optimizer = optim.SGD(grouped_parameters, lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
         start_epoch = 0
         end_epoch = num_epoch
         # Register EMA
@@ -168,8 +182,12 @@ if __name__ == '__main__':
                                             data = test_set)
 
     # Training
-    num_of_total_training_steps = (len(train_s_dataset) / train_batch_size) * num_epoch
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = num_of_total_training_steps, eta_min=0)
+    if args.scheduler:
+        num_of_total_training_steps = (len(train_s_dataset) / train_batch_size) * num_epoch
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = num_of_total_training_steps, eta_min=0)
+    else:
+        scheduler = None
+        
     writer = SummaryWriter(log_dir = os.path.join(exp_root, 'tensorboard'))
     best_epoch = 0
     best_metric = 0.0
