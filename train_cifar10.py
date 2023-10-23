@@ -2,12 +2,13 @@ import os
 import argparse
 import logging
 import numpy as np
+import math
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-
+from torch.optim.lr_scheduler import LambdaLR
 from fl_modules.client.cirfar10_logic import train_normal, validation, test
 from fl_modules.dataset.cifar10_dataset import Cifar10SupervisedDataset
 from fl_modules.dataset.utils import prepare_cifar10_datasets
@@ -29,6 +30,7 @@ def get_parser():
     parser.add_argument('--seed', type = int, default = 1029)
     parser.add_argument('--model', default='fl_modules.model.resnet9.ResNet9')
     parser.add_argument('--apply_ema', action='store_true', default=False)
+    parser.add_argument('--scheduler', action='store_true', default=False)
     parser.add_argument('--ema_decay', type=float, default=0.999)
     parser.add_argument('--resume_model_path', type=str, default='')
     parser.add_argument('--best_model_metric_name', type=str, default='accuracy')
@@ -70,6 +72,20 @@ def get_optimizer(model: nn.Module,
     elif optimizer_type.lower() == 'sgd':
         optimizer = optim.SGD(grouped_parameters, lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
     return optimizer
+    
+def get_cosine_schedule_with_warmup(optimizer,
+                                    num_warmup_steps,
+                                    num_training_steps,
+                                    num_cycles=7./16.,
+                                    last_epoch=-1):
+    def _lr_lambda(current_step):
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        no_progress = float(current_step - num_warmup_steps) / \
+            float(max(1, num_training_steps - num_warmup_steps))
+        return max(0., math.cos(math.pi * num_cycles * no_progress))
+
+    return LambdaLR(optimizer, _lr_lambda, last_epoch)
     
 if __name__ == '__main__':
     args = get_parser()
@@ -158,6 +174,12 @@ if __name__ == '__main__':
                                             data = test_set)
 
     # Training
+    if args.scheduler:
+        num_of_total_training_steps = (len(train_dataset) / train_batch_size) * num_epoch
+        scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=num_of_total_training_steps)
+    else:
+        scheduler = None
+    
     writer = SummaryWriter(log_dir = os.path.join(exp_root, 'tensorboard'))
     best_epoch = 0
     best_metric = 0.0
@@ -172,6 +194,7 @@ if __name__ == '__main__':
                                         optimizer = optimizer,
                                         num_epoch = 1,
                                         batch_size = train_batch_size,
+                                        scheduler=scheduler,
                                         device = device,
                                         enable_progress_bar=True,
                                         log_metric=True,
@@ -182,7 +205,7 @@ if __name__ == '__main__':
         if ema is not None:
             ema.apply_shadow()
         
-        if (epoch != 0 and epoch % 50 == 0) or (epoch == end_epoch - 1):
+        if (epoch != 0 and epoch % 100 == 0) or (epoch == end_epoch - 1):
             save_states(model = model, 
                         optimizer = optimizer, 
                         save_path = os.path.join(saving_model_root, f'{epoch + 1}.pth'),

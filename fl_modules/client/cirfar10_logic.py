@@ -144,6 +144,7 @@ def train_normal(model: nn.Module,
                 optimizer: torch.optim.Optimizer,
                 num_epoch: int, 
                 device: torch.device,
+                scheduler: torch.optim.lr_scheduler._LRScheduler = None,
                 ema: EMA = None,
                 batch_size = 10,
                 enable_progress_bar = False,
@@ -180,7 +181,8 @@ def train_normal(model: nn.Module,
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-            
+            if scheduler is not None:
+                scheduler.step()
             # Update EMA
             if ema is not None:
                 ema.update()
@@ -191,9 +193,15 @@ def train_normal(model: nn.Module,
             
             avg_total_loss = running_total_loss / (step + 1)
             avg_acc = running_acc / (step + 1)
+            
+            
+            post_fix = {'loss': avg_total_loss,
+                        'acc': avg_acc}
+            if scheduler is not None:
+                post_fix['lr'] = scheduler.get_last_lr()[0]
+                
             if progress_bar is not None:
-                progress_bar.set_postfix(loss = avg_total_loss,
-                                        acc = avg_acc)
+                progress_bar.set_postfix(**post_fix)
                 progress_bar.update()
         if progress_bar is not None:
             progress_bar.close()

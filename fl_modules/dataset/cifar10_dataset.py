@@ -15,7 +15,7 @@ cifar10_std = (0.2471, 0.2435, 0.2616)
 def normalize() -> transforms.Compose:
     return transforms.Compose([
         transforms.ToTensor(),
-        # transforms.Normalize(cifar10_mean, cifar10_std)
+        transforms.Normalize(cifar10_mean, cifar10_std)
     ])
 
 def weak_augment() -> transforms.Compose:
