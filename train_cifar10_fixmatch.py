@@ -1,10 +1,12 @@
 import os
 import argparse
 import logging
+import math
 import numpy as np
 
 import torch
 import torch.nn as nn
+from torch.optim.lr_scheduler import LambdaLR
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -28,8 +30,7 @@ def get_parser():
     parser.add_argument('--optimizer', default = 'sgd')
     parser.add_argument('--weight_decay', type = float, default = 0.0005)
     parser.add_argument('--unsupervised_conf_thrs', type = float, default = 0.95)
-    parser.add_argument('--supervised_ratio', type = float, default = 0.05)
-    parser.add_argument('--supervised_augment', action='store_true', default=False)
+    parser.add_argument('--supervised_ratio', type = float, default = 0.005)
     parser.add_argument('--seed', type = int, default = 1029)
     parser.add_argument('--scheduler', action='store_true', default=False)
     parser.add_argument('--model', default='fl_modules.model.wide_resnet.WideResNet')
@@ -78,6 +79,20 @@ def get_optimizer(model: nn.Module,
         optimizer = optim.SGD(grouped_parameters, lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
     return optimizer
     
+def get_cosine_schedule_with_warmup(optimizer,
+                                    num_warmup_steps,
+                                    num_training_steps,
+                                    num_cycles=7./16.,
+                                    last_epoch=-1):
+    def _lr_lambda(current_step):
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        no_progress = float(current_step - num_warmup_steps) / \
+            float(max(1, num_training_steps - num_warmup_steps))
+        return max(0., math.cos(math.pi * num_cycles * no_progress))
+
+    return LambdaLR(optimizer, _lr_lambda, last_epoch)
+    
 if __name__ == '__main__':
     args = get_parser()
     seed = args.seed
@@ -87,7 +102,6 @@ if __name__ == '__main__':
     num_epoch = args.num_epoch
     weight_decay = args.weight_decay
     supervised_ratio = args.supervised_ratio
-    supervised_augment = args.supervised_augment
     unsupervised_conf_thrs = args.unsupervised_conf_thrs
     merge_supervised = args.merge_supervised
     learning_rate = args.lr
@@ -169,7 +183,7 @@ if __name__ == '__main__':
     train_u = train_u[0]
     train_s_dataset = Cifar10SupervisedDataset(dataset_type = 'train',
                                                data = train_s,
-                                               do_augment = supervised_augment)
+                                               do_augment = True)
     # Merge supervised data into unsupervised data
     if merge_supervised:
         train_u['x'] = np.concatenate([train_u['x'], train_s['x'].copy()])
@@ -190,9 +204,12 @@ if __name__ == '__main__':
     iter_dataloader_u = iter(dataloader_u)
 
     # Training
+    ## Scheduler
     if args.scheduler:
         num_of_total_training_steps = (len(train_s_dataset) / train_bs) * num_epoch
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = num_of_total_training_steps, eta_min=0)
+        scheduler = get_cosine_schedule_with_warmup(optimizer,
+                                                    num_warmup_steps=0,
+                                                    num_training_steps = num_of_total_training_steps)
     else:
         scheduler = None
         
@@ -202,17 +219,20 @@ if __name__ == '__main__':
     last_best_txt = ''
     
     model = model.to(device)
+    
+    num_steps = max(len(train_s_dataset) // train_bs, 1000)
     for epoch in range(start_epoch, end_epoch):
         logger.info("Epoch {}/{}:".format(epoch + 1, end_epoch))
         # Train
         train_metrics = train_fixmatch(model = model,
+                                       dataloader_s=dataloader_s,
                                        iter_dataloader_s = iter_dataloader_s,
+                                       dataloader_u=dataloader_u,
                                         iter_dataloader_u = iter_dataloader_u,
                                         optimizer = optimizer,
                                         scheduler = scheduler,
-                                        epoch = epoch,
-                                        num_epochs = end_epoch,
-                                        unsupervised_conf_thrs=unsupervised_conf_thrs,
+                                        num_steps=num_steps,
+                                        unsupervised_conf_thrs = unsupervised_conf_thrs,
                                         device = device,
                                         enable_progress_bar=True,
                                         log_metric=True,
@@ -223,13 +243,13 @@ if __name__ == '__main__':
         if ema is not None:
             ema.apply_shadow()
         
-        if (epoch != 0 and epoch % 50 == 0) or (epoch == end_epoch - 1):
+        if (epoch != 0 and epoch % 100 == 0) or (epoch == end_epoch - 1):
             save_states(model = model, 
                         optimizer = optimizer, 
                         save_path = os.path.join(saving_model_root, f'{epoch + 1}.pth'),
                         ema = ema)
         # Validating
-        val_metrics = validation(model, val_dataset, bs=val_bs,  device=device, enable_progress_bar=True,log_metric=True)
+        val_metrics = validation(model, val_dataset, bs=val_bs, device=device, enable_progress_bar=True,log_metric=True)
         write_metrics(val_metrics, epoch, 'val', writer)
         metric = val_metrics[best_model_metric_name]
         if metric >= best_metric:
