@@ -70,7 +70,7 @@ class NetworkBlock(nn.Module):
 
 
 class WideResNet(nn.Module):
-    def __init__(self, num_classes, depth=28, widen_factor=2, drop_rate=0.0):
+    def __init__(self, num_classes = 10, depth=28, widen_factor=2, drop_rate=0.0):
         super(WideResNet, self).__init__()
         channels = [16, 16*widen_factor, 32*widen_factor, 64*widen_factor]
         assert((depth - 4) % 6 == 0)
