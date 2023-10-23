@@ -54,6 +54,23 @@ def save_states(model: nn.Module,
         save_dict['ema'] = ema.state_dict()
     torch.save(save_dict, save_path)
     
+def get_optimizer(model: nn.Module, 
+                  optimizer_type: str,
+                  learning_rate: float, 
+                  weight_decay: float = 0.0):
+    no_decay = ['bias', 'bn']
+    grouped_parameters = [
+        {'params': [p for n, p in model.named_parameters() if not any(
+            nd in n for nd in no_decay)], 'weight_decay': weight_decay},
+        {'params': [p for n, p in model.named_parameters() if any(
+            nd in n for nd in no_decay)], 'weight_decay': 0.0}
+    ]
+    if optimizer_type.lower() == 'adam':
+        optimizer = optim.Adam(grouped_parameters, lr=learning_rate, weight_decay=weight_decay)
+    elif optimizer_type.lower() == 'sgd':
+        optimizer = optim.SGD(grouped_parameters, lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
+    return optimizer
+    
 if __name__ == '__main__':
     args = get_parser()
     seed = args.seed
@@ -75,9 +92,10 @@ if __name__ == '__main__':
                                             cur_time.day, 
                                             cur_time.hour, 
                                             cur_time.minute)
-    exp_name = timestamp
-    if exp_name != '':
-        exp_name = exp_name + f'_{exp_name}'
+    if exp_name == '':
+        exp_name = timestamp
+    else:
+        exp_name = f'{timestamp}_{exp_name}'
     exp_root = f'./save/cifar10_normal/{exp_name}'
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -89,18 +107,7 @@ if __name__ == '__main__':
         
         model.load_state_dict(checkpoint['model_state_dict'])
         
-        no_decay = ['bias', 'bn']
-        grouped_parameters = [
-            {'params': [p for n, p in model.named_parameters() if not any(
-                nd in n for nd in no_decay)], 'weight_decay': args.wdecay},
-            {'params': [p for n, p in model.named_parameters() if any(
-                nd in n for nd in no_decay)], 'weight_decay': 0.0}
-        ]
-        if args.optimizer == 'adam':
-            optimizer = optim.Adam(grouped_parameters, lr=learning_rate, weight_decay=weight_decay)
-        elif args.optimizer == 'sgd':
-            optimizer = optim.SGD(grouped_parameters, lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
-        
+        optimizer = get_optimizer(model, args.optimizer, learning_rate, weight_decay)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if 'ema' in checkpoint:
             ema = EMA(model, decay = args.ema_decay)
@@ -121,17 +128,7 @@ if __name__ == '__main__':
         model = build_instance(args.model)
         model = model.to(device)
 
-        no_decay = ['bias', 'bn']
-        grouped_parameters = [
-            {'params': [p for n, p in model.named_parameters() if not any(
-                nd in n for nd in no_decay)], 'weight_decay': args.wdecay},
-            {'params': [p for n, p in model.named_parameters() if any(
-                nd in n for nd in no_decay)], 'weight_decay': 0.0}
-        ]
-        if args.optimizer == 'adam':
-            optimizer = optim.Adam(grouped_parameters, lr=learning_rate, weight_decay=weight_decay)
-        elif args.optimizer == 'sgd':
-            optimizer = optim.SGD(grouped_parameters, lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
+        optimizer = get_optimizer(model, args.optimizer, learning_rate, weight_decay)
         start_epoch = 0
         end_epoch = num_epoch
         # Register EMA

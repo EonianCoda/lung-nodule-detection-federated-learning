@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from fl_modules.client.cirfar10_logic import train_fixmatch, validation, test
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--exp_name', default = '')
-    parser.add_argument('--batch_size', type = int, default = 64)
+    parser.add_argument('--bs', type = int, default = 64)
     parser.add_argument('--num_epoch', type = int, default = 200)
     parser.add_argument('--lr', type = float, default = 0.03)
     parser.add_argument('--optimizer', default = 'sgd')
@@ -33,6 +34,7 @@ def get_parser():
     parser.add_argument('--scheduler', action='store_true', default=False)
     parser.add_argument('--model', default='fl_modules.model.wide_resnet.WideResNet')
     parser.add_argument('--merge_supervised', action='store_true', default=False)
+    parser.add_argument('--unsupervised_bs_multiplier', type = int, default = 7)
     parser.add_argument('--apply_ema', action='store_true', default=False)
     parser.add_argument('--ema_decay', type=float, default=0.999)
     parser.add_argument('--resume_model_path', type=str, default='')
@@ -59,12 +61,29 @@ def save_states(model: nn.Module,
         save_dict['ema'] = ema.state_dict()
     torch.save(save_dict, save_path)
     
+def get_optimizer(model: nn.Module, 
+                  optimizer_type: str,
+                  learning_rate: float, 
+                  weight_decay: float = 0.0):
+    no_decay = ['bias', 'bn']
+    grouped_parameters = [
+        {'params': [p for n, p in model.named_parameters() if not any(
+            nd in n for nd in no_decay)], 'weight_decay': weight_decay},
+        {'params': [p for n, p in model.named_parameters() if any(
+            nd in n for nd in no_decay)], 'weight_decay': 0.0}
+    ]
+    if optimizer_type.lower() == 'adam':
+        optimizer = optim.Adam(grouped_parameters, lr=learning_rate, weight_decay=weight_decay)
+    elif optimizer_type.lower() == 'sgd':
+        optimizer = optim.SGD(grouped_parameters, lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
+    return optimizer
+    
 if __name__ == '__main__':
     args = get_parser()
     seed = args.seed
     exp_name = args.exp_name
-    train_batch_size = args.batch_size
-    val_batch_size = 64 if train_batch_size <= 64 else train_batch_size
+    train_bs = args.bs
+    val_bs = 64 if train_bs <= 64 else train_bs
     num_epoch = args.num_epoch
     weight_decay = args.weight_decay
     supervised_ratio = args.supervised_ratio
@@ -75,6 +94,7 @@ if __name__ == '__main__':
     apply_ema = args.apply_ema
     resume_model_path = args.resume_model_path
     best_model_metric_name = args.best_model_metric_name
+    unsupervised_bs_multiplier= args.unsupervised_bs_multiplier
     
     # Set seed
     init_seed(seed)
@@ -86,10 +106,10 @@ if __name__ == '__main__':
                                             cur_time.day, 
                                             cur_time.hour, 
                                             cur_time.minute)
-    if exp_name != '':
-        exp_name = timestamp + f'_{exp_name}'
-    else:
+    if exp_name == '':
         exp_name = timestamp
+    else:
+        exp_name = f'{timestamp}_{exp_name}'
     exp_root = f'./save/cifar10_fixmatch/{exp_name}'
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -100,17 +120,7 @@ if __name__ == '__main__':
         if 'model_structure' in checkpoint:
             model = checkpoint['model_structure']
         
-        no_decay = ['bias', 'bn']
-        grouped_parameters = [
-            {'params': [p for n, p in model.named_parameters() if not any(
-                nd in n for nd in no_decay)], 'weight_decay': args.wdecay},
-            {'params': [p for n, p in model.named_parameters() if any(
-                nd in n for nd in no_decay)], 'weight_decay': 0.0}
-        ]
-        if args.optimizer == 'adam':
-            optimizer = optim.Adam(grouped_parameters, lr=learning_rate, weight_decay=weight_decay)
-        elif args.optimizer == 'sgd':
-            optimizer = optim.SGD(grouped_parameters, lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
+        optimizer = get_optimizer(model, args.optimizer, learning_rate, weight_decay)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if 'ema' in checkpoint:
             ema = EMA(model, decay = args.ema_decay)
@@ -131,17 +141,7 @@ if __name__ == '__main__':
         model = build_instance(args.model)
         model = model.to(device)
         
-        no_decay = ['bias', 'bn']
-        grouped_parameters = [
-            {'params': [p for n, p in model.named_parameters() if not any(
-                nd in n for nd in no_decay)], 'weight_decay': args.wdecay},
-            {'params': [p for n, p in model.named_parameters() if any(
-                nd in n for nd in no_decay)], 'weight_decay': 0.0}
-        ]
-        if args.optimizer == 'adam':
-            optimizer = optim.Adam(grouped_parameters, lr=learning_rate, weight_decay=weight_decay)
-        elif args.optimizer == 'sgd':
-            optimizer = optim.SGD(grouped_parameters, lr=learning_rate, weight_decay=weight_decay, momentum=0.9, nesterov=True)
+        optimizer = get_optimizer(model, args.optimizer, learning_rate, weight_decay)
         start_epoch = 0
         end_epoch = num_epoch
         # Register EMA
@@ -170,6 +170,7 @@ if __name__ == '__main__':
     train_s_dataset = Cifar10SupervisedDataset(dataset_type = 'train',
                                                data = train_s,
                                                do_augment = supervised_augment)
+    # Merge supervised data into unsupervised data
     if merge_supervised:
         train_u['x'] = np.concatenate([train_u['x'], train_s['x'].copy()])
     
@@ -181,9 +182,16 @@ if __name__ == '__main__':
     test_dataset = Cifar10SupervisedDataset(dataset_type = 'test',
                                             data = test_set)
 
+
+    # Get dataloader
+    dataloader_s = DataLoader(train_s_dataset, batch_size = train_bs, shuffle = True, num_workers = os.cpu_count() // 2, drop_last = True)
+    dataloader_u = DataLoader(train_u_dataset, batch_size = train_bs * unsupervised_bs_multiplier, shuffle = True, num_workers = os.cpu_count() // 2, drop_last = True)
+    iter_dataloader_s = iter(dataloader_s)
+    iter_dataloader_u = iter(dataloader_u)
+
     # Training
     if args.scheduler:
-        num_of_total_training_steps = (len(train_s_dataset) / train_batch_size) * num_epoch
+        num_of_total_training_steps = (len(train_s_dataset) / train_bs) * num_epoch
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = num_of_total_training_steps, eta_min=0)
     else:
         scheduler = None
@@ -198,12 +206,12 @@ if __name__ == '__main__':
         logger.info("Epoch {}/{}:".format(epoch + 1, end_epoch))
         # Train
         train_metrics = train_fixmatch(model = model,
-                                       dataset_s = train_s_dataset,
-                                        dataset_u = train_u_dataset,
+                                       iter_dataloader_s = iter_dataloader_s,
+                                        iter_dataloader_u = iter_dataloader_u,
                                         optimizer = optimizer,
                                         scheduler = scheduler,
-                                        num_epoch = 1,
-                                        batch_size = train_batch_size,
+                                        epoch = epoch,
+                                        num_epochs = end_epoch,
                                         unsupervised_conf_thrs=unsupervised_conf_thrs,
                                         device = device,
                                         enable_progress_bar=True,
@@ -221,7 +229,7 @@ if __name__ == '__main__':
                         save_path = os.path.join(saving_model_root, f'{epoch + 1}.pth'),
                         ema = ema)
         # Validating
-        val_metrics = validation(model, val_dataset, batch_size=val_batch_size,  device=device, enable_progress_bar=True,log_metric=True)
+        val_metrics = validation(model, val_dataset, bs=val_bs,  device=device, enable_progress_bar=True,log_metric=True)
         write_metrics(val_metrics, epoch, 'val', writer)
         metric = val_metrics[best_model_metric_name]
         if metric >= best_metric:
@@ -247,7 +255,7 @@ if __name__ == '__main__':
     model_state_dict = torch.load(os.path.join(exp_root, 'best.pth'), map_location=device)
     model.load_state_dict(model_state_dict['model_state_dict'])
     
-    test_metrics = test(model, test_dataset, batch_size=val_batch_size, device=device, enable_progress_bar=True,log_metric=True)
+    test_metrics = test(model, test_dataset, bs=val_bs, device=device, enable_progress_bar=True,log_metric=True)
     # Write metrics to tensorboard
     write_metrics(test_metrics, epoch, 'test', writer)
     writer.close()
