@@ -49,7 +49,6 @@ class ResNet9(nn.Module):
         out = self.pool(out)
         out = self.flatten(out)
         out = self.fc(out)
-        out = F.softmax(out, dim=1)
         return out
     
     def _weight_init(self):

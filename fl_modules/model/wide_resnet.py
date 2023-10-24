@@ -115,11 +115,3 @@ class WideResNet(nn.Module):
         out = F.adaptive_avg_pool2d(out, 1)
         out = out.view(-1, self.channels)
         return self.fc(out)
-
-
-# def build_wideresnet(depth, widen_factor, dropout, num_classes):
-#     logger.info(f"Model: WideResNet {depth}x{widen_factor}")
-#     return WideResNet(depth=depth,
-#                       widen_factor=widen_factor,
-#                       drop_rate=dropout,
-#                       num_classes=num_classes)
