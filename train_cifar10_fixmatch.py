@@ -36,7 +36,7 @@ def get_parser():
     
     parser.add_argument('--apply_scheduler', action='store_true', default=False)
     
-    parser.add_argument('--no_ema', action='store_false', default=False)
+    parser.add_argument('--no_ema', action='store_true', default=False)
     parser.add_argument('--ema_decay', type=float, default=0.999)
     
     parser.add_argument('--seed', type = int, default = 1029)
