@@ -46,7 +46,7 @@ def train_fixmatch(model: nn.Module,
                     num_steps: int,
                     device: torch.device,
                     scheduler: torch.optim.lr_scheduler._LRScheduler = None,
-                    unsupervised_conf_thrs: float = 0.75,
+                    unsupervised_conf_thrs: float = 0.95,
                     ema: EMA = None,
                     enable_progress_bar = False,
                     log_metric = False) -> Dict[str, float]:
@@ -59,7 +59,7 @@ def train_fixmatch(model: nn.Module,
     losses_s = AverageMeter()
     losses_u = AverageMeter()
     losses = AverageMeter()
-    corrected_s = AverageMeter()
+    acc_s = AverageMeter()
     
     for step in range(num_steps):
         try:
@@ -97,6 +97,8 @@ def train_fixmatch(model: nn.Module,
         loss_u = F.cross_entropy(y_pred_u, torch.argmax(y_pseu, dim=1), reduction='none') * mask
         loss_u = loss_u.mean() * LAMBDA_U
         loss_final = loss_final + loss_u
+        
+        # Backward
         loss_final.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -113,12 +115,12 @@ def train_fixmatch(model: nn.Module,
         losses_s.update(loss_s.item())
         losses_u.update(loss_u.item())
         losses.update(loss_final.item())
-        corrected_s.update(torch.sum(torch.argmax(y_pred_s, dim=1) == y_s).item(), supervised_bs)
+        acc_s.update(torch.sum(torch.argmax(y_pred_s, dim=1) == y_s).item() / supervised_bs)
         
         post_fix = {'loss': losses.avg,
                     'loss_s': losses_s.avg,
                     'loss_u': losses_u.avg,
-                    'acc_s': corrected_s.avg}
+                    'acc_s': acc_s.avg}
         if scheduler is not None:
             post_fix['lr'] = scheduler.get_last_lr()[0]
         if progress_bar is not None:
@@ -127,7 +129,7 @@ def train_fixmatch(model: nn.Module,
     if progress_bar is not None:
         progress_bar.close()
                 
-    train_metrics = {'acc_s': corrected_s.avg,
+    train_metrics = {'acc_s': acc_s.avg,
                     'loss': losses.avg,
                     'loss_s': losses_s.avg,
                     'loss_u': losses_u.avg}
@@ -151,7 +153,7 @@ def train_normal(model: nn.Module,
     
     progress_bar = get_progress_bar('Train', len(dataloader), 0, 1) if enable_progress_bar else None
     losses = AverageMeter()
-    corrected = AverageMeter()
+    accs = AverageMeter()
     for step, (x, y) in enumerate(dataloader):
         x, y = x.to(device), y.to(device)
         y_one_hot =  nn.functional.one_hot(y.long(), num_classes=10).float() 
@@ -171,10 +173,10 @@ def train_normal(model: nn.Module,
         
         # Log loss and metrics
         losses.update(loss.item())
-        corrected.update(torch.sum(torch.argmax(y_pred, dim=1) == y).item(), x.shape[0])
+        accs.update(torch.sum(torch.argmax(y_pred, dim=1) == y).item() / x.shape[0])
         
         post_fix = {'loss': losses.avg,
-                    'acc': corrected.avg}
+                    'acc': accs.avg}
         if scheduler is not None:
             post_fix['lr'] = scheduler.get_last_lr()[0]
             
@@ -184,7 +186,7 @@ def train_normal(model: nn.Module,
     if progress_bar is not None:
         progress_bar.close()
                 
-    train_metrics = {'acc_s': corrected.avg,
+    train_metrics = {'acc_s': accs.avg,
                     'loss': losses.avg}
     
     if log_metric:
@@ -200,7 +202,7 @@ def validation(model: nn.Module,
     model.eval()
     progress_bar = get_progress_bar('Validation', len(dataloader), 0, 1) if enable_progress_bar else None
     val_losses = AverageMeter()
-    val_corrected = AverageMeter()
+    val_accs = AverageMeter()
     for step, (x, y) in enumerate(dataloader):
         x, y = x.to(device), y.to(device)
         y_pred = model(x)
@@ -209,17 +211,17 @@ def validation(model: nn.Module,
         val_loss = CrossEntropyLoss()(y_pred, y_one_hot)
     
         val_losses.update(val_loss.item())
-        val_corrected.update(torch.sum(torch.argmax(y_pred, dim=1) == y).item(), x.shape[0])
+        val_accs.update(torch.sum(torch.argmax(y_pred, dim=1) == y).item() / x.shape[0])
         
         postfix = {'loss': val_losses.avg,
-                    'accuracy': val_corrected.avg}
+                    'accuracy': val_accs.avg}
         if progress_bar is not None:
             progress_bar.set_postfix(**postfix)
             progress_bar.update()
     if progress_bar is not None:
         progress_bar.close()
     val_metrics = {'loss': val_losses.avg,
-                    'accuracy': val_corrected.avg}
+                    'accuracy': val_accs.avg}
     if log_metric:
         for metric, value in val_metrics.items():
             logger.info("Val metric '{}' = {:.4f}".format(metric, value))
