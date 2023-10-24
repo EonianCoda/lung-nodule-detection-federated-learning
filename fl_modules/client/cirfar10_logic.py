@@ -110,7 +110,7 @@ def train_fixmatch(model: nn.Module,
         losses_s.update(loss_s.item())
         losses_u.update(loss_u.item())
         losses.update(loss_final.item())
-        corrected_s.update(torch.sum(torch.argmax(y_pred_s, dim=1) == y_s).item() / len(y_s)) 
+        corrected_s.update(torch.sum(torch.argmax(y_pred_s, dim=1) == y_s).item()) 
         
         post_fix = {'loss': losses.avg,
                     'loss_s': losses_s.avg,
@@ -135,77 +135,60 @@ def train_fixmatch(model: nn.Module,
     return train_metrics
 
 def train_normal(model: nn.Module, 
-                dataset: Dataset,
+                dataloader: DataLoader,
                 optimizer: torch.optim.Optimizer,
-                num_epoch: int, 
                 device: torch.device,
                 scheduler: torch.optim.lr_scheduler._LRScheduler = None,
                 ema: EMA = None,
-                batch_size = 10,
                 enable_progress_bar = False,
                 log_metric = False) -> Dict[str, float]:
                 
     model.train()
     optimizer.zero_grad()
     
-    avg_total_loss = 0.0
-    avg_acc = 0.0
     supervised_loss_fn = CrossEntropyLoss()
     # Calculate unsupervised loss    
-    batch_size_s = batch_size
-    num_steps = len(dataset) // batch_size_s
+    if enable_progress_bar:
+        progress_bar = get_progress_bar('Train', len(dataloader), 0, 1)
+    else:
+        progress_bar = None
 
-    for epoch in range(num_epoch):
-        dataloader = DataLoader(dataset, batch_size = batch_size_s, shuffle = True, num_workers = os.cpu_count() // 2)
-        if enable_progress_bar:
-            progress_bar = get_progress_bar('Train', len(dataloader), epoch, num_epoch)
-        else:
-            progress_bar = None
-
-        running_total_loss = 0.0
-        running_acc = 0.0
-        for step, (x_s, y_s) in enumerate(dataloader):
-            x_s, y_s = x_s.to(device), y_s.to(device)
-            y_s_one_hot =  nn.functional.one_hot(y_s.long(), num_classes=10).float() 
+    losses = AverageMeter()
+    corrected = AverageMeter()
+    for step, (x, y) in enumerate(dataloader):
+        x, y = x.to(device), y.to(device)
+        y_one_hot =  nn.functional.one_hot(y.long(), num_classes=10).float() 
+        
+        # Calculate supervised loss
+        y_pred = model(x)
+        loss = supervised_loss_fn(y_pred, y_one_hot)
+        
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        if scheduler is not None:
+            scheduler.step()
+        # Update EMA
+        if ema is not None:
+            ema.update()
+        
+        # Log loss and metrics
+        losses.update(loss.item())
+        corrected.update(torch.sum(torch.argmax(y_pred, dim=1) == y).item())
+        
+        post_fix = {'loss': losses.avg,
+                    'acc': corrected.avg}
+        if scheduler is not None:
+            post_fix['lr'] = scheduler.get_last_lr()[0]
             
-            # Calculate supervised loss
-            y_pred_s = model(x_s)
-            loss = supervised_loss_fn(y_pred_s, y_s_one_hot)
-            acc = torch.sum(torch.argmax(y_pred_s, dim=1) == y_s).item() / len(y_s)
-            
-            loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
-            if scheduler is not None:
-                scheduler.step()
-            # Update EMA
-            if ema is not None:
-                ema.update()
-            
-            # Log loss and metrics
-            running_total_loss = running_total_loss + loss.item()
-            running_acc = running_acc + acc
-            
-            avg_total_loss = running_total_loss / (step + 1)
-            avg_acc = running_acc / (step + 1)
-            
-            
-            post_fix = {'loss': avg_total_loss,
-                        'acc': avg_acc}
-            if scheduler is not None:
-                post_fix['lr'] = scheduler.get_last_lr()[0]
-                
-            if progress_bar is not None:
-                progress_bar.set_postfix(**post_fix)
-                progress_bar.update()
         if progress_bar is not None:
-            progress_bar.close()
+            progress_bar.set_postfix(**post_fix)
+            progress_bar.update()
+    if progress_bar is not None:
+        progress_bar.close()
                 
-    final_avg_total_loss = running_total_loss / num_steps 
-    final_avg_acc = running_acc / num_steps
-    
-    train_metrics = {'acc_s': final_avg_acc,
-                    'loss': final_avg_total_loss}
+    train_metrics = {'acc_s': corrected.avg,
+                    'loss': losses.avg}
     
     if log_metric:
         for metric, value in train_metrics.items():
@@ -213,42 +196,37 @@ def train_normal(model: nn.Module,
     return train_metrics
     
 def validation(model: nn.Module, 
-               dataset: Dataset,
+               dataloader: DataLoader,
                device: torch.device = torch.device('cpu'),
-               batch_size = 64,
                enable_progress_bar = False,
                log_metric = False) -> Dict[str, float]:
     model.eval()
-    
-    val_dataloader = DataLoader(dataset, batch_size = batch_size, shuffle = False, num_workers = os.cpu_count() // 2)
-    
     if enable_progress_bar:
-        progress_bar = get_progress_bar('Validation', len(val_dataloader), 0, 1)
+        progress_bar = get_progress_bar('Validation', len(dataloader), 0, 1)
     else:
         progress_bar = None
     
     val_losses = AverageMeter()
-    val_accs = AverageMeter()
-    for step, (x, y_gts) in enumerate(val_dataloader):
-        x, y_gts = x.to(device), y_gts.to(device)
-        y_preds = model(x)
+    val_corrected = AverageMeter()
+    for step, (x, y) in enumerate(dataloader):
+        x, y = x.to(device), y.to(device)
+        y_pred = model(x)
         
-        y_gts_one_hot =  nn.functional.one_hot(y_gts.long(), num_classes=10).float()
-        val_loss = CrossEntropyLoss()(y_preds, y_gts_one_hot)
-        acc = torch.sum(torch.argmax(y_preds, dim=1) == y_gts).item() / len(y_gts)
+        y_one_hot =  nn.functional.one_hot(y.long(), num_classes=10).float()
+        val_loss = CrossEntropyLoss()(y_pred, y_one_hot)
     
         val_losses.update(val_loss.item())
-        val_accs.update(acc)
+        val_corrected.update(torch.sum(torch.argmax(y_pred, dim=1) == y).item())
         
         postfix = {'loss': val_losses.avg,
-                    'accuracy': val_accs.avg}
+                    'accuracy': val_corrected.avg}
         if progress_bar is not None:
             progress_bar.set_postfix(**postfix)
             progress_bar.update()
     if progress_bar is not None:
         progress_bar.close()
     val_metrics = {'loss': val_losses.avg,
-                    'accuracy': val_accs.avg}
+                    'accuracy': val_corrected.avg}
     if log_metric:
         for metric, value in val_metrics.items():
             logger.info("Val metric '{}' = {:.4f}".format(metric, value))
@@ -256,10 +234,9 @@ def validation(model: nn.Module,
     return val_metrics
 
 def test(model: nn.Module, 
-               dataset: Dataset,
-               device: torch.device = torch.device('cpu'),
-               batch_size = 64,
-               enable_progress_bar = False,
-               log_metric = False) -> Dict[str, float]:
-    test_metrics = validation(model, dataset, device, batch_size, enable_progress_bar, log_metric)
+        dataloader: DataLoader,
+        device: torch.device = torch.device('cpu'),
+        enable_progress_bar = False,
+        log_metric = False) -> Dict[str, float]:
+    test_metrics = validation(model, dataloader, device, enable_progress_bar, log_metric)
     return test_metrics

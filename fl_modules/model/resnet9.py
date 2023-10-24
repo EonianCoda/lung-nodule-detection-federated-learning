@@ -31,7 +31,7 @@ class ResNet9(nn.Module):
         self.conv6 = nn.Sequential(conv_block(512, 512), conv_block(512, 512))
         self.pool = nn.MaxPool2d(kernel_size=4)
         self.flatten = nn.Flatten()
-        self.fc = nn.Linear(512, num_classes, bias=False)
+        self.fc = nn.Linear(512, num_classes)
 
         self._weight_init()
 
