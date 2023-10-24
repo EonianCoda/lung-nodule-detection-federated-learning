@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader, Dataset
 import torch.nn as nn
 import torch
 from torch.nn import CrossEntropyLoss
+import torch.nn.functional as F
 
 from fl_modules.utilities import get_progress_bar
 from fl_modules.model.ema import EMA
@@ -59,41 +60,43 @@ def train_fixmatch(model: nn.Module,
     losses_u = AverageMeter()
     losses = AverageMeter()
     corrected_s = AverageMeter()
+    
     for step in range(num_steps):
         try:
             x_s, y_s = next(iter_dataloader_s)
         except StopIteration:
             iter_dataloader_s = iter(dataloader_s)
             x_s, y_s = next(iter_dataloader_s)
-        x_s, y_s = x_s.to(device), y_s.to(device)
+        y_s = y_s.to(device)
         y_s_one_hot =  nn.functional.one_hot(y_s.long(), num_classes=10).float() 
-        
+    
         try:
             x_u = next(iter_dataloader_u)
         except StopIteration:
             iter_dataloader_u = iter(dataloader_u)
             x_u = next(iter_dataloader_u)
-            
-        for i in range(len(x_u)):
-            x_u[i] = x_u[i].to(device)
-        loss_final = 0
         
-        # Calculate supervised loss
-        y_pred_s = model(x_s)
-        loss_s = supervised_loss_fn(y_pred_s, y_s_one_hot) * LAMBDA_S
-        loss_final += loss_s
+        x = torch.cat([x_s] + x_u, dim=0)
+        x = x.to(device)
         
-        # Calculate unsupervised loss
-        y_pred = model(x_u[0])
-        conf = torch.where(torch.max(y_pred, dim=1)[0] >= unsupervised_conf_thrs)[0]
-        if len(conf) > 0:
-            y_pseu = y_pred[conf]
-            y_pseu = torch.argmax(y_pseu, dim=1)
-            y_pseu_onehot = nn.functional.one_hot(y_pseu, num_classes=10).float()
-            loss_u = supervised_loss_fn(model(x_u[1][conf]), y_pseu_onehot) * LAMBDA_U
-            loss_final += loss_u
-        else:
-            loss_u = torch.tensor(0.0)
+        # Predict
+        y_pred = model(x)
+        # Calculate loss
+        supervised_bs = x_s.shape[0]
+        unsupervised_bs = x_u[0].shape[0]
+        ## Calculate supervised loss
+        y_pred_s = y_pred[:supervised_bs]
+        loss_s = F.cross_entropy(y_pred_s, y_s_one_hot, reduction='mean') * LAMBDA_S
+        loss_final = loss_s
+        
+        ## Calculate unsupervised loss
+        y_pseu = y_pred[supervised_bs: supervised_bs + unsupervised_bs]
+        y_pred_u = y_pred[supervised_bs + unsupervised_bs:]
+        
+        mask = (torch.max(y_pseu, dim=1)[0] >= unsupervised_conf_thrs).float()
+        loss_u = F.cross_entropy(y_pred_u, torch.argmax(y_pseu, dim=1), reduction='none') * mask
+        loss_u = loss_u.mean() * LAMBDA_U
+        loss_final = loss_final + loss_u
         loss_final.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -110,7 +113,7 @@ def train_fixmatch(model: nn.Module,
         losses_s.update(loss_s.item())
         losses_u.update(loss_u.item())
         losses.update(loss_final.item())
-        corrected_s.update(torch.sum(torch.argmax(y_pred_s, dim=1) == y_s).item()) 
+        corrected_s.update(torch.sum(torch.argmax(y_pred_s, dim=1) == y_s).item(), supervised_bs)
         
         post_fix = {'loss': losses.avg,
                     'loss_s': losses_s.avg,
@@ -146,13 +149,7 @@ def train_normal(model: nn.Module,
     model.train()
     optimizer.zero_grad()
     
-    supervised_loss_fn = CrossEntropyLoss()
-    # Calculate unsupervised loss    
-    if enable_progress_bar:
-        progress_bar = get_progress_bar('Train', len(dataloader), 0, 1)
-    else:
-        progress_bar = None
-
+    progress_bar = get_progress_bar('Train', len(dataloader), 0, 1) if enable_progress_bar else None
     losses = AverageMeter()
     corrected = AverageMeter()
     for step, (x, y) in enumerate(dataloader):
@@ -161,7 +158,7 @@ def train_normal(model: nn.Module,
         
         # Calculate supervised loss
         y_pred = model(x)
-        loss = supervised_loss_fn(y_pred, y_one_hot)
+        loss = F.cross_entropy(y_pred, y_one_hot, reduction='mean')
         
         loss.backward()
         optimizer.step()
@@ -174,7 +171,7 @@ def train_normal(model: nn.Module,
         
         # Log loss and metrics
         losses.update(loss.item())
-        corrected.update(torch.sum(torch.argmax(y_pred, dim=1) == y).item())
+        corrected.update(torch.sum(torch.argmax(y_pred, dim=1) == y).item(), x.shape[0])
         
         post_fix = {'loss': losses.avg,
                     'acc': corrected.avg}
@@ -201,11 +198,7 @@ def validation(model: nn.Module,
                enable_progress_bar = False,
                log_metric = False) -> Dict[str, float]:
     model.eval()
-    if enable_progress_bar:
-        progress_bar = get_progress_bar('Validation', len(dataloader), 0, 1)
-    else:
-        progress_bar = None
-    
+    progress_bar = get_progress_bar('Validation', len(dataloader), 0, 1) if enable_progress_bar else None
     val_losses = AverageMeter()
     val_corrected = AverageMeter()
     for step, (x, y) in enumerate(dataloader):
@@ -216,7 +209,7 @@ def validation(model: nn.Module,
         val_loss = CrossEntropyLoss()(y_pred, y_one_hot)
     
         val_losses.update(val_loss.item())
-        val_corrected.update(torch.sum(torch.argmax(y_pred, dim=1) == y).item())
+        val_corrected.update(torch.sum(torch.argmax(y_pred, dim=1) == y).item(), x.shape[0])
         
         postfix = {'loss': val_losses.avg,
                     'accuracy': val_corrected.avg}
