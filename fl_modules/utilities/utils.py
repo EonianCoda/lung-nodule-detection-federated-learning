@@ -93,7 +93,7 @@ def init_seed(seed: int):
     random.seed(seed)
     if torch.cuda.is_available():
         torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.benchmark = True
         torch.cuda.manual_seed(seed)
     else:
         torch.manual_seed(seed)

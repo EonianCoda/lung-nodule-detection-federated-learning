@@ -95,7 +95,7 @@ def train_fixmatch(model: nn.Module,
         # Backward
         loss_final.backward()
         optimizer.step()
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         
         # Update scheduler
         if scheduler is not None:

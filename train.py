@@ -58,7 +58,7 @@ def generate_exp_name(args):
     if args.exp_name == '':
         exp_name = timestamp
     else:
-        exp_name = f'{timestamp}_{args.exp_name}'
+        exp_name = f'{timestamp}_{args.exp_name}_'
     
     # Auto Description
     exp_name += '{}_{}LR{:.0e}WD{:.0e}'.format(args.model, args.optimizer, args.lr, args.weight_decay)

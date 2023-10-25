@@ -92,9 +92,13 @@ if __name__ == '__main__':
     
     # Dataset
     train_s_dataset, train_u_dataset, val_dataset, test_dataset = build_dataset(args)
-    num_workers = os.cpu_count() // 2
+    num_workers = os.cpu_count() // 4
     dataloader_s = DataLoader(train_s_dataset, batch_size = train_bs, shuffle = True, num_workers = num_workers, drop_last = True)
-    dataloader_u = DataLoader(train_u_dataset, batch_size = train_bs * args.unsupervised_bs_multiplier, shuffle = True, num_workers = num_workers, drop_last = True)
+    dataloader_u = DataLoader(train_u_dataset, 
+                              batch_size = train_bs * args.unsupervised_bs_multiplier, 
+                              shuffle = True, 
+                              num_workers = num_workers,
+                              rop_last = True)
     iter_dataloader_s = iter(dataloader_s)
     iter_dataloader_u = iter(dataloader_u)
     logger.info("Number of labeled data per class = {}".format(len(train_s_dataset) / 10))
