@@ -97,7 +97,7 @@ def build_train(args):
     
     # Experiment Name
     exp_name = generate_exp_name(args)
-    exp_root = f'./save/cifar10_fixmatch/{exp_name}'
+    exp_root = os.path.join(args.save_folder, exp_name)
     
     # Build model and optimizer
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")

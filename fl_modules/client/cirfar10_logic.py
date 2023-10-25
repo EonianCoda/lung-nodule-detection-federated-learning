@@ -66,15 +66,14 @@ def train_fixmatch(model: nn.Module,
         except StopIteration:
             iter_dataloader_s = iter(dataloader_s)
             x_s, targets_s = next(iter_dataloader_s)
-        targets_s = targets_s.to(device)
+        targets_s = targets_s.long().to(device)
         try:
-            x_u = next(iter_dataloader_u)
+            x_u_w, x_u_s = next(iter_dataloader_u)
         except StopIteration:
             iter_dataloader_u = iter(dataloader_u)
-            x_u = next(iter_dataloader_u)
+            x_u_w, x_u_s = next(iter_dataloader_u)
         
-        x = torch.cat([x_s] + x_u, dim=0)
-        x = x.to(device)
+        x = torch.cat((x_s, x_u_w, x_u_s), dim=0).to(device)
         
         # Predict
         logits = model(x)
@@ -151,7 +150,7 @@ def train_normal(model: nn.Module,
     losses = AverageMeter()
     accs = AverageMeter()
     for step, (x, target) in enumerate(dataloader):
-        x, target = x.to(device), target.to(device)
+        x, target = x.to(device), target.long().to(device)
         
         # Calculate supervised loss
         logits = model(x)
@@ -200,7 +199,7 @@ def validation(model: nn.Module,
     losses = AverageMeter()
     accs = AverageMeter()
     for step, (x, target) in enumerate(dataloader):
-        x, target = x.to(device), target.to(device)
+        x, target = x.to(device), target.long().to(device)
         with torch.no_grad():
             logits = model(x)
         

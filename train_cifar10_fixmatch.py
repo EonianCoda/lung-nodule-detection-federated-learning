@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--exp_name', default = '')
+    parser.add_argument('--save_folder', default = './save/cifar10_fixmatch/')
     parser.add_argument('--bs', type = int, default = 64)
     
     parser.add_argument('--num_epoch', type = int, default = 200)

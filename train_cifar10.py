@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--exp_name', default = '')
+    parser.add_argument('--save_folder', default = './save/cifar10_normal/')
     parser.add_argument('--bs', type = int, default = 64)
     
     parser.add_argument('--num_epoch', type = int, default = 200)
@@ -29,6 +30,7 @@ def get_parser():
     parser.add_argument('--model', default='wide_resnet')
     
     parser.add_argument('--apply_scheduler', action='store_true', default=False)
+    parser.add_argument('--eval_steps', type = int, default = 750)
     
     parser.add_argument('--no_ema', action='store_true', default=False)
     parser.add_argument('--ema_decay', type=float, default=0.999)
@@ -60,6 +62,7 @@ def get_dataloder(args):
     return train_dataloader, val_dataloader, test_dataloader
 if __name__ == '__main__':
     args = get_parser()
+    args.eval_steps = (60000 * 0.8) // args.bs
     best_model_metric_name = args.best_model_metric_name
     val_bs = args.bs * 2
     

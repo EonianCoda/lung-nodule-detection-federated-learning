@@ -70,7 +70,6 @@ class Cifar10UnsupervisedDataset(Dataset):
         return data
     
     def augment(self, image: Image, augment_type: str) -> np.ndarray:
-        image = image.copy()
         if augment_type == 'strong':
             image = self.strong(image)
         elif augment_type == 'weak':
