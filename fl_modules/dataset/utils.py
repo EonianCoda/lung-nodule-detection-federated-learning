@@ -140,7 +140,7 @@ def prepare_cifar10_datasets(train_val_test_split: List[float] = [0.8, 0.1, 0.1]
     
     # Split train/val/test set uniformly
     splited_dataset = split_data(x, y, train_val_test_split, seed=seed)
-    train_set, val_set, test_set = splited_dataset[0], splited_dataset[1], splited_dataset[2]
+    train_set, val_data, test_data = splited_dataset[0], splited_dataset[1], splited_dataset[2]
     
     # Split train set into supervised and unsupervised set
     splited_dataset = split_data(train_set['x'], train_set['y'], s_u_split, seed=seed)
@@ -172,4 +172,4 @@ def prepare_cifar10_datasets(train_val_test_split: List[float] = [0.8, 0.1, 0.1]
     splited_dataset = split_data(train_u['x'], train_u['y'], ratios, dist=dist, seed=seed)
     client_train_u = splited_dataset
     
-    return client_train_s, client_train_u, val_set, test_set
+    return client_train_s, client_train_u, val_data, test_data

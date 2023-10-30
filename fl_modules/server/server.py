@@ -9,12 +9,9 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 import shutil
 from fl_modules.client.client import Client
-from fl_modules.utilities.nodule_metrics import NoduleMetrics
 from fl_modules.utilities import build_instance, build_class
 from fl_modules.utilities.draw_fig import MetricDrawer
-from fl_modules.inference.utils import compute_recall, compute_precision, compute_f1_score
 from fl_modules.model.ema import EMA
-
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +27,7 @@ class Server:
         self.server_config = config['server']
         self.enable_progress_bar = self.config['common']['enable_progress_bar']
         self.save_local_state = self.config['common']['save_local_state']
+        
         # Resume Options
         self.resume = resume
         self.pretrained_model_path = pretrained_model_path
@@ -92,7 +90,11 @@ class Server:
             if hasattr(self.optimizer, 'update_global_weights'):
                 self.optimizer.update_global_weights()
             # Training
-            train_metrics = client.train(round_number, model = self.model, optimizer = self.optimizer, ema = self.ema)
+            train_metrics = client.train(round_number, 
+                                         model = self.model, 
+                                         optimizer = self.optimizer, 
+                                         scheduler = self.scheduler,
+                                         ema = self.ema)
             client_train_metrics[client_name] = train_metrics
             for metric_name, metric_value in train_metrics.items():
                 logger.info(f"Client '{client.name}' train metric '{metric_name}' = {metric_value:.4f}")
@@ -111,11 +113,11 @@ class Server:
                 logger.info(f"Client '{client.name}' val metric '{metric_name}' = {metric_value:.4f}")
             
             # Save client model, optimizer and ema state
-            client.save_model_state(self.model, round_number)           
+            client.save_state_dict(self.model, 'model', round_number)
             if self.optimizer_aggregaion_strategy != 'reset':
-                client.save_optimizer_state(self.optimizer, round_number)
+                client.save_state_dict(self.optimizer, 'optimizer', round_number)
             if self.apply_ema:
-                client.save_ema_state(self.ema, round_number)
+                client.save_state_dict(self.ema, 'ema', round_number)
                 self.ema.restore()
                 
         self.write_tensorboard(client_train_metrics, round_number, 'train')
@@ -207,7 +209,7 @@ class Server:
             if round_number == 0:
                 self.optimizer = self.build_optimizer(self.model)
             else:
-                client.load_optimizer_state(self.optimizer, round_number - 1, self.device)
+                client.load_state_dict(self.optimizer, 'optimizer', round_number - 1, self.device)
         elif self.optimizer_aggregaion_strategy == 'reset': # reset optimizer every round_number
             self.optimizer = self.build_optimizer(self.model)
         else:
@@ -292,13 +294,6 @@ class Server:
                     avg_metrics[metric_name] += metric_value * self.client_weights[client_name]
                 else:
                     avg_metrics[metric_name] += metric_value                    
-
-        # if is_val:
-        #     # Reset recall, precision, f1_score based on weighted sum of tp, fp, fn, tn of different clients
-        #     avg_metrics['recall'] = compute_recall(avg_metrics['tp'], avg_metrics['fn'])
-        #     avg_metrics['precision'] = compute_precision(avg_metrics['tp'], avg_metrics['fp'])
-        #     avg_metrics['f1_score'] = compute_f1_score(avg_metrics['recall'], avg_metrics['precision'])
-            
         return avg_metrics
         
     def testing_and_save_metrics(self):
@@ -314,7 +309,6 @@ class Server:
             client_test_metrics[client.name] = test_metrics
             
             # Write metrics to csv file for each client
-            metrics = NoduleMetrics(test_metrics)
             series_list_path = os.path.basename(client.test_series_list_path)
             
             params = copy.deepcopy(self.server_config['actions']['test']['params'])
@@ -335,14 +329,7 @@ class Server:
                 for metric_key in ['tp', 'fp', 'fn', 'tn']:
                     sum_test_metrics[nodule_type][metric_key] += metrics[nodule_type][metric_key]
                     
-        # Calculate recall, precision, f1_score
-        for metrics in sum_test_metrics.values():
-            metrics['recall'] = compute_recall(metrics['tp'], metrics['fn'])
-            metrics['precision'] = compute_precision(metrics['tp'], metrics['fp'])
-            metrics['f1_score'] = compute_f1_score(metrics['recall'], metrics['precision'])
-        
         # Write average metrics to csv file
-        metrics = NoduleMetrics(sum_test_metrics)
         params = copy.deepcopy(self.server_config['actions']['test']['params'])
         if params == None:
             params = dict()
@@ -358,6 +345,7 @@ class Server:
         self._init_model()
         self._init_optimizer()
         self._init_ema()
+        self._init_scheduler()
         self._init_clients()
         self._init_aggregation()
         self._init_best_model_metric()
@@ -413,6 +401,17 @@ class Server:
         else:
             self.ema = None
     
+    def _init_scheduler(self):
+        self.apply_scheduler = self.server_config['scheduler']['apply']
+        if self.apply_scheduler:
+            scheduler_template = build_class(self.server_config['scheduler']['template'])
+            params = copy.deepcopy(self.server_config['scheduler']['params'])
+            params['optimizer'] = self.optimizer
+            params['num_training_steps'] = self.server_config['total_rounds'] * self.server_config['actions']['train']['params']['num_steps']
+            self.scheduler = scheduler_template(**params)
+        else:
+            self.scheduler = None
+            
     def _init_clients(self):
         # Prepare training, validation and testing function
         train_fn = build_class(self.server_config['actions']['train']['template'])
@@ -427,26 +426,16 @@ class Server:
         # Prepare clients
         clients = dict()
         self.num_of_client = len(self.clients_config)
-        for client_name in self.clients_config.keys():
-            # Update client config
-            default_dataset_params_config = copy.deepcopy(self.config['client']['dataset']['params'])
-            dataset_params_config = dict()
-            for identifier in self.clients_config[client_name]['dataset_params'].keys():
-                params = copy.deepcopy(default_dataset_params_config)
-                params.update(self.clients_config[client_name]['dataset_params'][identifier])
-                dataset_params_config[identifier] = params
-                
+        for client_name, client_config in self.clients_config.items():
             client = Client(name = client_name, 
                             client_folder = join(self.exp_folder, 'client', client_name),
-                            client_config = self.config['client'],
-                            dataset_params_config = dataset_params_config, 
+                            client_config = client_config,
                             model = self.model,
                             optimizer = self.optimizer,
+                            scheduler = self.scheduler,
                             ema = self.ema,
                             device = self.device,
                             enable_progress_bar = self.enable_progress_bar)
-            client.prepare()
-            
             # Build action
             client.build_action(train_fn, train_fn_params, 'train')
             client.build_action(val_fn, val_fn_params, 'val')

@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from fl_modules.client.cirfar10_logic import train_fixmatch, validation, test
-from fl_modules.dataset.cifar10_dataset import Cifar10SupervisedDataset, Cifar10UnsupervisedDataset
+from fl_modules.dataset.cifar10_dataset import Cifar10Dataset
 from fl_modules.dataset.utils import prepare_cifar10_datasets
 
 from train import build_train, save_states, write_metrics
@@ -51,26 +51,20 @@ def build_dataset(args):
     seed = args.seed
     merge_supervised = args.merge_supervised
     # Get dataset
-    train_s, train_u, val_set, test_set = prepare_cifar10_datasets(train_val_test_split = [0.8, 0.1, 0.1], 
+    train_s_data, train_u_data, val_data, test_data = prepare_cifar10_datasets(train_val_test_split = [0.8, 0.1, 0.1], 
                                                                    s_u_split=[supervised_ratio, 1.0 - supervised_ratio],
                                                                    seed=seed, 
                                                                    num_clients=1)
-    train_s = train_s[0]
-    train_u = train_u[0]
-    train_s_dataset = Cifar10SupervisedDataset(dataset_type = 'train',
-                                               data = train_s,
-                                               do_augment = True)
+    train_s_data = train_s_data[0]
+    train_u_data = train_u_data[0]
+    train_s_dataset = Cifar10Dataset(train_s_data, ['weak'])
     # Merge supervised data into unsupervised data
     if merge_supervised:
-        train_u['x'] = np.concatenate([train_u['x'], train_s['x'].copy()])
+        train_u_data['x'] = np.concatenate([train_u_data['x'], train_s_data['x'].copy()])
     
-    train_u_dataset = Cifar10UnsupervisedDataset(dataset_type = 'train',
-                                                 data = train_u,
-                                                targets = ['weak', 'strong'])
-    val_dataset = Cifar10SupervisedDataset(dataset_type = 'val', 
-                                           data = val_set)
-    test_dataset = Cifar10SupervisedDataset(dataset_type = 'test',
-                                            data = test_set)
+    train_u_dataset = Cifar10Dataset(train_u_data, ['weak', 'strong'])
+    val_dataset = Cifar10Dataset(val_data)
+    test_dataset = Cifar10Dataset(test_data)
     
     return train_s_dataset, train_u_dataset, val_dataset, test_dataset
     
@@ -93,12 +87,18 @@ if __name__ == '__main__':
     # Dataset
     train_s_dataset, train_u_dataset, val_dataset, test_dataset = build_dataset(args)
     num_workers = os.cpu_count() // 4
-    dataloader_s = DataLoader(train_s_dataset, batch_size = train_bs, shuffle = True, num_workers = num_workers, drop_last = True)
+    dataloader_s = DataLoader(train_s_dataset, 
+                              batch_size = train_bs, 
+                              shuffle = True, 
+                              num_workers = num_workers, 
+                              drop_last = True)
+    
     dataloader_u = DataLoader(train_u_dataset, 
                               batch_size = train_bs * args.unsupervised_bs_multiplier, 
                               shuffle = True, 
                               num_workers = num_workers,
-                              rop_last = True)
+                              drop_last = True)
+    
     iter_dataloader_s = iter(dataloader_s)
     iter_dataloader_u = iter(dataloader_u)
     logger.info("Number of labeled data per class = {}".format(len(train_s_dataset) / 10))

@@ -10,8 +10,8 @@ def get_args():
     parser.add_argument('--exp_name', type = str, default = '', help = 'Experiment name')
     parser.add_argument('--resume_folder', type = str, default = None, help = 'Resume from a folder')
     parser.add_argument('--pretrained_model_path', type = str, default = None, help = 'Path to pretrained model')
-    parser.add_argument('--config_path', type = str, default = './config/stage1.yaml', help = 'Path to config file')
-    parser.add_argument('--clients_config_path', type = str, default = './config/clients/stage1_clients.yaml', help = 'Path to clients config file')
+    parser.add_argument('--config_path', type = str, default = './config/cirfar10_wide_resnet_fedavg_fixmatch.yaml', help = 'Path to config file')
+    parser.add_argument('--clients_config_path', type = str, default = './config/clients/cifar10_client_config.yaml', help = 'Path to clients config file')
     args = parser.parse_args()
     return args
 

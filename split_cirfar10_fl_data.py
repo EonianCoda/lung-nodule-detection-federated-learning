@@ -42,6 +42,7 @@ if __name__ == '__main__':
     
     
     clients_config = {}
+    template = "fl_modules.dataset.cifar10_dataset.Cifar10Dataset"
     for client_id in client_train_s.keys():
         train_s_save_path = join(save_dir, f'client_{client_id}_train_s.npz')
         train_u_save_path = join(save_dir, f'client_{client_id}_train_u.npz')
@@ -49,10 +50,10 @@ if __name__ == '__main__':
         np.savez(train_s_save_path, **client_train_s[client_id])
         np.savez(train_u_save_path, **client_train_u[client_id])
         
-        config = {'dataset_params': {'train_s': train_s_save_path,
-                                    'train_u': train_u_save_path,
-                                    'val': val_save_path,
-                                    'test': test_save_path}}
+        config = {'dataset': {'train_s': {'template': template, 'params': {'data': train_s_save_path, 'targets': ['weak']}},
+                                    'train_u': {'template': template, 'params': {'data': train_u_save_path, 'targets': ['weak', 'strong']}},
+                                    'val': {'template': template, 'params': {'data': val_save_path}},
+                                    'test': {'template': template, 'params': {'data': test_save_path}}}}
         
         clients_config[f'Client_{client_id}'] = config
     write_yaml(args.client_config_save_path, clients_config)

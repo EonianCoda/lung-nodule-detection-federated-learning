@@ -1,0 +1,57 @@
+common:
+  seed: 1029
+  enable_progress_bar: True
+  save_dir: './save'
+  save_local_state: False
+  
+server:
+  total_rounds: 300
+  best_model_metric_name: accuracy
+
+  model: 
+    template: fl_modules.model.wide_resnet.WideResNet
+    params:
+      num_classes: 10
+      depth: 28
+      widen_factor: 2
+
+  ema:
+    apply: False
+    params:
+      decay: 0.99
+
+  scheduler:
+    apply: False
+    template: fl_modules.scheduler.cosine_scheduler.get_cosine_schedule_with_warmup
+    params:
+      num_warmup_steps: 0
+      num_training_steps: ~
+      num_cycles: 0.4375 # 7 / 16
+
+  optimizer: 
+    template: torch.optim.SGD
+    params:
+      lr: 0.03
+
+  actions:
+    train:
+      template: fl_modules.client.cifar10_logic.train_fixmatch
+      params:
+        unsupervised_conf_thrs: 0.95
+        num_steps: 1000
+    val:
+      template: fl_modules.client.cifar10_logic.validation
+      params: ~
+    test:
+      template: fl_modules.client.cifar10_logic.test
+      params: ~
+
+  aggregation:
+    optimizer_aggregate_strategy: continue_global # continue_global, continue_local, reset
+    template:
+      fl_modules.server.aggregation.fedavg.FedAvg
+    params:
+      model:
+        keep_local_state: []
+      optimizer:
+        keep_local_state: [] # If strategy is not continue_global, this field is ignored.

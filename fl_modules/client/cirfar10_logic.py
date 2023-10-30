@@ -21,7 +21,6 @@ class AverageMeter(object):
     """Computes and stores the average and current value
        Imported from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L247-L262
     """
-
     def __init__(self):
         self.reset()
 
@@ -39,12 +38,12 @@ class AverageMeter(object):
 
 def train_fixmatch(model: nn.Module, 
                     dataloader_s: DataLoader,
-                    iter_dataloader_s,
                     dataloader_u: DataLoader,
-                    iter_dataloader_u, 
                     optimizer: torch.optim.Optimizer,
                     num_steps: int,
                     device: torch.device,
+                    iter_dataloader_s = None,
+                    iter_dataloader_u = None,
                     scheduler: torch.optim.lr_scheduler._LRScheduler = None,
                     unsupervised_conf_thrs: float = 0.95,
                     ema: EMA = None,
@@ -60,6 +59,11 @@ def train_fixmatch(model: nn.Module,
     losses = AverageMeter()
     accs_s = AverageMeter()
     
+    if iter_dataloader_s is None:
+        iter_dataloader_s = iter(dataloader_s)
+    if iter_dataloader_u is None:
+        iter_dataloader_u = iter(dataloader_u)
+    
     for step in range(num_steps):
         try:
             x_s, targets_s = next(iter_dataloader_s)
@@ -68,10 +72,10 @@ def train_fixmatch(model: nn.Module,
             x_s, targets_s = next(iter_dataloader_s)
         targets_s = targets_s.long().to(device)
         try:
-            x_u_w, x_u_s = next(iter_dataloader_u)
+            (x_u_w, _), x_u_s = next(iter_dataloader_u)
         except StopIteration:
             iter_dataloader_u = iter(dataloader_u)
-            x_u_w, x_u_s = next(iter_dataloader_u)
+            (x_u_w, _), x_u_s = next(iter_dataloader_u)
         
         x = torch.cat((x_s, x_u_w, x_u_s), dim=0).to(device)
         
@@ -158,7 +162,7 @@ def train_normal(model: nn.Module,
         
         loss.backward()
         optimizer.step()
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         if scheduler is not None:
             scheduler.step()
         # Update EMA

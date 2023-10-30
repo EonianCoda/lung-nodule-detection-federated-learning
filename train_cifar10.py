@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 from fl_modules.client.cirfar10_logic import train_normal, validation, test
-from fl_modules.dataset.cifar10_dataset import Cifar10SupervisedDataset
+from fl_modules.dataset.cifar10_dataset import Cifar10Dataset
 from fl_modules.dataset.utils import prepare_cifar10_datasets
 
 from fl_modules.utilities import setup_logging, write_yaml
@@ -45,15 +45,11 @@ def get_dataloder(args):
     train_bs = args.bs
     val_bs = train_bs * 2
     
-    train_s, _ , val_set, test_set = prepare_cifar10_datasets(train_val_test_split = [0.8, 0.1, 0.1], s_u_split=[1.0, 0.0], num_clients = 1, seed=args.seed)
-    train_dataset = Cifar10SupervisedDataset(dataset_type = 'train',
-                                            data = train_s[0],
-                                            do_augment = True)
-    val_dataset = Cifar10SupervisedDataset(dataset_type = 'val', 
-                                           data = val_set)
-    test_dataset = Cifar10SupervisedDataset(dataset_type = 'test',
-                                            data = test_set)
-
+    train_s_data, _ , val_data, test_data = prepare_cifar10_datasets(train_val_test_split = [0.8, 0.1, 0.1], s_u_split=[1.0, 0.0], num_clients = 1, seed=args.seed)
+    train_dataset = Cifar10Dataset(train_s_data[0], ['weak'])
+    val_dataset = Cifar10Dataset(val_data)
+    test_dataset = Cifar10Dataset(test_data)
+    
     num_workers = os.cpu_count() // 2
     train_dataloader = DataLoader(train_dataset, batch_size = train_bs, shuffle = True, num_workers = num_workers, drop_last = True)
     val_dataloader = DataLoader(val_dataset, batch_size = val_bs, shuffle = False, num_workers = num_workers, drop_last = False)

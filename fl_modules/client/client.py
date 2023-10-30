@@ -1,13 +1,14 @@
 import os
 from os.path import join
+import shutil
 import copy
 import json
 import logging
 from typing import List, Dict, Any
 
 import torch
-from fl_modules.utilities import build_instance, write_yaml
-from fl_modules.inference.nodule_counter import NoduleCounter
+from torch.utils.data import DataLoader
+from fl_modules.utilities import build_instance
 logger = logging.getLogger(__name__)
 
 class Client:
@@ -15,9 +16,9 @@ class Client:
                  name: str,
                  client_folder: str,
                  client_config: Dict[str, Any],
-                 dataset_params_config: Dict[str, Dict[str, Any]],
                  model,
                  optimizer,
+                 scheduler,
                  ema,
                  device: torch.device,
                  enable_progress_bar: bool):
@@ -25,38 +26,20 @@ class Client:
         self.client_folder = client_folder
         os.makedirs(self.client_folder, exist_ok = True)
         self.client_config = client_config
-        self.dataset_params_config = dataset_params_config
+        self.dataset_config = self.client_config['dataset']
         
+        self.train_config = dict()
+        self.val_config = dict()
+        self.test_config = dict()
+                
         self.model = model
         self.optimizer = optimizer
         self.ema = ema
+        self.scheduler = scheduler
         self.device = device
         self.enable_progress_bar = enable_progress_bar
-        self.prepare()
-    
-    def prepare(self):
-        self._build_dataset_config()    
-        
-    def _build_dataset_config(self):
-        # Prepare dataset config
-        counter = NoduleCounter()
-        self.dataset_config = dict()
-        for key in self.dataset_params_config.keys():
-            series_list_path = self.dataset_params_config[key]['series_list_path']
-            num_nodule = counter.count_and_analyze_nodules_of_multi_series(series_list_path, self.client_config['nodule_size_ranges'])
-            
-            # Create dataset config for different dataset
-            config = copy.deepcopy(self.client_config['dataset']['params'])
-            config.update(self.dataset_params_config[key])
-            config['dataset_type'] = key
-            config['nodule_size_ranges'] = self.client_config['nodule_size_ranges']
-            config['num_nodules'] = num_nodule
-            
-            setattr(self, f'{key}_series_list_path', series_list_path)
-            setattr(self, f'num_nodule_of_{key}_set', num_nodule)
-            self.dataset_config[key] = config
-        # Write dataset config to yaml file
-        write_yaml(join(self.client_folder, 'plan', 'dataset_config.yaml'), self.dataset_config, default_flow_style = None)
+
+        self.num_workers = os.cpu_count() // 4
 
     def build_action(self, action_fn, action_config: Dict[str, Any], action_name: str):
         action_config = copy.deepcopy(action_config) if action_config != None else dict()
@@ -66,16 +49,34 @@ class Client:
         setattr(self, f'{action_name}_config', action_config)
         setattr(self, f'{action_name}_fn', action_fn)
         
-    def train(self, round_number: int, model, optimizer, ema):
+    def train(self, round_number: int, model, optimizer, ema, scheduler):
         logger.info(f"Client '{self.name}' starts training!")
         # Lazy initialize dataset
         if self.train_config.get('dataset', None) == None:
-            self.train_set = build_instance(self.client_config['dataset']['template'], self.dataset_config['train'])
-            self.train_config['dataset'] = self.train_set
+            train_s_dataset = build_instance(self.dataset_config['train_s']['template'], self.dataset_config['train_s']['params'])
+            train_u = build_instance(self.dataset_config['train_u']['template'], self.dataset_config['train_u']['params'])
+            
+            train_s_dataloder = DataLoader(train_s_dataset,
+                                           batch_size=train_s_dataset.batch_size,
+                                            shuffle = True,
+                                            num_workers = self.num_workers,
+                                            pin_memory = True,
+                                            persistent_workers = True,
+                                            drop_last = True)
+            train_u_dataloader = DataLoader(train_u,
+                                            batch_size = train_u.batch_size,
+                                            shuffle = True,
+                                            num_workers = self.num_workers,
+                                            pin_memory = True,
+                                            persistent_workers = True,
+                                            drop_last = True)
+            self.train_config['dataloader_s'] = train_s_dataloder
+            self.train_config['dataloader_u'] = train_u_dataloader
         
         self.train_config['model'] = model
         self.train_config['optimizer'] = optimizer
         self.train_config['ema'] = ema
+        self.train_config['scheduler'] = scheduler
         train_metrics = self.train_fn(**self.train_config)
         
         self.save_metrics(train_metrics, 'train', round_number)
@@ -85,8 +86,13 @@ class Client:
         logger.info(f"Client '{self.name}' starts validation!")
         # Lazy initialize dataset
         if self.val_config.get('dataset', None) == None:
-            self.val_set = build_instance(self.client_config['dataset']['template'], self.dataset_config['val'])
-            self.val_config['dataset'] = self.val_set
+            val_dataset = build_instance(self.dataset_config['val']['template'], self.dataset_config['val']['params'])
+            dataloader = DataLoader(val_dataset,
+                                    batch_size = val_dataset.batch_size,
+                                    shuffle = False,
+                                    num_workers = self.num_workers,
+                                    drop_last = False)
+            self.val_config['dataloader'] = dataloader
             
         self.val_config['model'] = model
         val_metrics = self.val_fn(**self.val_config)
@@ -100,40 +106,40 @@ class Client:
         logger.info(f'Client {self.name} starts testing!')
         # Lazy initialize dataset
         if self.test_config.get('dataset', None) == None:
-            self.test_set = build_instance(self.client_config['dataset']['template'], self.dataset_config['test'])
-            self.test_config['dataset'] = self.test_set
+            test_set = build_instance(self.dataset_config['test']['template'], self.dataset_config['test']['params'])
+            dataloader = DataLoader(test_set,
+                                    batch_size = test_set.batch_size,
+                                    shuffle = False,
+                                    num_workers = self.num_workers,
+                                    drop_last = False)
+            self.test_config['dataloader'] = dataloader
             
         self.test_config['model'] = model
         test_metrics = self.test_fn(**self.test_config)
         
         return test_metrics
     
-    def save_model_state(self, model, round_number: int):
-        save_path = join(self.client_folder, 'model', f'{round_number}.pt')
-        os.makedirs(os.path.dirname(save_path), exist_ok = True)
-        torch.save(model.state_dict(), save_path)
-        
-    def load_model_state(self, model, round_number: int, device: torch.device):
-        save_path = join(self.client_folder, 'model', f'{round_number}.pt')
-        model.load_state_dict(torch.load(save_path, map_location = device))
-        
-    def save_optimizer_state(self, optimizer, round_number: int):
-        save_path = join(self.client_folder, 'optimizer', f'{round_number}.pt')
-        os.makedirs(os.path.dirname(save_path), exist_ok = True)
-        torch.save(optimizer.state_dict(), save_path)
+    def save_state_dict(self, 
+                        instance,
+                        target: str, 
+                        round_number: int,
+                        remove_previous: bool = True):
+        save_path = join(self.client_folder, target, f'{round_number}.pt')
+        folder = os.path.dirname(save_path)
+        if remove_previous:
+            if os.path.exists(folder):
+                shutil.rmtree(folder)
+        os.makedirs(folder, exist_ok = True)
+        torch.save(instance.state_dict(), save_path)
     
-    def load_optimizer_state(self, optimizer, round_number: int, device: torch.device):
-        save_path = join(self.client_folder, 'optimizer', f'{round_number}.pt')
-        optimizer.load_state_dict(torch.load(save_path, map_location = device))
-        
-    def save_ema_state(self, ema, round_number: int):
-        save_path = join(self.client_folder, 'ema', f'{round_number}.pt')
-        os.makedirs(os.path.dirname(save_path), exist_ok = True)
-        torch.save(ema.state_dict(), save_path)
-    
-    def load_ema_state(self, ema, round_number: int, device: torch.device):
-        save_path = join(self.client_folder, 'ema', f'{round_number}.pt')
-        ema.load_state_dict(torch.load(save_path, map_location = device))
+    def load_state_dict(self,
+                        instance,
+                        target: str,
+                        round_number: int,
+                        device: torch.device):
+        save_path = join(self.client_folder, target, f'{round_number}.pt')
+        state_dict = torch.load(save_path, map_location = device)
+        instance.load_state_dict(state_dict)
     
     def save_metrics(self, metrics: Dict[str, float], task: str, round_number: int):
         """Save metrics to json file
