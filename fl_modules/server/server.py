@@ -389,8 +389,6 @@ class Server:
         optimizer_template = build_class(self.server_config['optimizer']['template'])
         params = copy.deepcopy(self.server_config['optimizer']['params'])
         if 'weight_decay' in params:
-            params['weight_decay'] = params['weight_decay'] * self.server_config['actions']['train']['params']['batch_size'] / self.num_of_client
-            
             weight_decay = params['weight_decay']        
             no_decay = ['bias', 'bn']
             grouped_parameters = [
