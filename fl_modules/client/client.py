@@ -72,7 +72,7 @@ class Client:
                                             drop_last = True)
             self.train_config['dataloader_s'] = train_s_dataloder
             self.train_config['dataloader_u'] = train_u_dataloader
-        
+            
         self.train_config['model'] = model
         self.train_config['optimizer'] = optimizer
         self.train_config['ema'] = ema
@@ -159,3 +159,8 @@ class Client:
         os.makedirs(os.path.dirname(save_path), exist_ok = True)
         with open(save_path, 'w') as f:
             json.dump(metrics, f, indent = 4)
+    
+    
+    @property
+    def weight(self):
+        return len(self.train_config['dataloader_s']) + len(self.train_config['dataloader_u'])

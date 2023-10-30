@@ -494,7 +494,7 @@ class Server:
         
         client_weights = dict()
         for client_name, client in self._clients.items():
-            client_weights[client_name] = len(client.train_set)
+            client_weights[client_name] = client.weight
             
         # Normalize client weights
         count_samples = sum(client_weights.values()) 

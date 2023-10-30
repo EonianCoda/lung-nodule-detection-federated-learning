@@ -50,10 +50,10 @@ if __name__ == '__main__':
         np.savez(train_s_save_path, **client_train_s[client_id])
         np.savez(train_u_save_path, **client_train_u[client_id])
         
-        config = {'dataset': {'train_s': {'template': template, 'params': {'data': train_s_save_path, 'targets': ['weak']}},
-                                    'train_u': {'template': template, 'params': {'data': train_u_save_path, 'targets': ['weak', 'strong']}},
-                                    'val': {'template': template, 'params': {'data': val_save_path}},
-                                    'test': {'template': template, 'params': {'data': test_save_path}}}}
+        config = {'dataset': {'train_s': {'template': template, 'params': {'data': train_s_save_path, 'targets': ['weak'], 'batch_size': 64}},
+                                    'train_u': {'template': template, 'params': {'data': train_u_save_path, 'targets': ['weak', 'strong'], 'batch_size': 64 * 7}},
+                                    'val': {'template': template, 'params': {'data': val_save_path, 'batch_size': 64 * 2}},
+                                    'test': {'template': template, 'params': {'data': test_save_path, 'batch_size': 64 * 2}}}}
         
         clients_config[f'Client_{client_id}'] = config
     write_yaml(args.client_config_save_path, clients_config)

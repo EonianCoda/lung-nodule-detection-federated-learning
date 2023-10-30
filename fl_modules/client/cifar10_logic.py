@@ -72,10 +72,10 @@ def train_fixmatch(model: nn.Module,
             x_s, targets_s = next(iter_dataloader_s)
         targets_s = targets_s.long().to(device)
         try:
-            (x_u_w, _), x_u_s = next(iter_dataloader_u)
+            (x_u_w, x_u_s), _  = next(iter_dataloader_u)
         except StopIteration:
             iter_dataloader_u = iter(dataloader_u)
-            (x_u_w, _), x_u_s = next(iter_dataloader_u)
+            (x_u_w, x_u_s), _ = next(iter_dataloader_u)
         
         x = torch.cat((x_s, x_u_w, x_u_s), dim=0).to(device)
         
