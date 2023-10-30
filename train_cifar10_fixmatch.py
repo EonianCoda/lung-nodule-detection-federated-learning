@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from fl_modules.client.cirfar10_logic import train_fixmatch, validation, test
+from fl_modules.client.cifar10_logic import train_fixmatch, validation, test
 from fl_modules.dataset.cifar10_dataset import Cifar10Dataset
 from fl_modules.dataset.utils import prepare_cifar10_datasets
 
