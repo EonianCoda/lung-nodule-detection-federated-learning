@@ -2,12 +2,23 @@ import os
 import torchvision
 import numpy as np
 import random
+import pickle
+from PIL import Image
 from numpy.typing import NDArray
-from typing import Tuple, Dict, List
+from typing import Tuple, Dict, List, Union
 from collections import defaultdict
 
 SAVE_ROOT = './data'
-CIFAR10_PATH = os.path.join(SAVE_ROOT, 'cifar10.npz')
+CIFAR10_PATH = os.path.join(SAVE_ROOT, 'cifar10.pkl')
+
+def save_pickle(obj, save_path: str):
+    with open(save_path, 'wb') as f:
+        pickle.dump(obj, f)
+
+def load_pickle(load_path: str):
+    with open(load_path, 'rb') as f:
+        obj = pickle.load(f)
+    return obj
 
 def load_cifar10() -> Tuple[NDArray[np.uint8], NDArray[np.int32]]:
     """
@@ -22,32 +33,32 @@ def load_cifar10() -> Tuple[NDArray[np.uint8], NDArray[np.int32]]:
         test_set = torchvision.datasets.CIFAR10(root=SAVE_ROOT, train=False, transform=None, download=True)
         
         x, y = [], []
-        for img, target in train_set:
-            x.append(np.array(img, dtype=np.uint8))
-            y.append(target)
-        for img, target in test_set:
-            x.append(np.array(img, dtype=np.uint8))
-            y.append(target)
-        
+        x.append(train_set.data)
+        x.append(test_set.data)
         x = np.stack(x)
-        y = np.stack(y, dtype=np.int32)
-        np.savez(CIFAR10_PATH, x=x, y=y)
+        x_pillow = []
+        for i in range(x.shape[0]):
+            x_pillow.append(Image.fromarray(x[i]))
+        
+        y.extend(train_set.targets)
+        y.extend(test_set.targets)
+        y = np.array(y, dtype=np.int32)
+        
+        save_pickle({'x': x_pillow, 'y': y}, CIFAR10_PATH)
     
-    data = np.load(CIFAR10_PATH)
+    data = load_pickle(CIFAR10_PATH)
     
     return data['x'], data['y']
 
-def split_data(x: NDArray[np.uint8], 
+def split_data(x: List[Image.Image], 
                y: NDArray[np.int32], 
                split_ratios: List[float],
                dist: List[List[float]] = None,
-               seed: int = 0) -> Dict[int, Dict[str, np.ndarray]]:
+               seed: int = 0) -> Dict[int, Dict[str, Union[List[Image.Image],np.ndarray]]]:
     """
     Args:
-        split_ratio: 
-            A list of float numbers that sum to 1.0
-        dist:
-            A n x m matrix, where n is the number of categories and m is the number of splits. The sum of each row must be 1.0.
+        split_ratio: A list of float numbers that sum to 1.0
+        dist: A n x m matrix, where n is the number of categories and m is the number of splits. The sum of each row must be 1.0.
     """
     
     # Check distribution
@@ -86,13 +97,11 @@ def split_data(x: NDArray[np.uint8],
                     end_i = int(len(indices) * sum(split_ratios[:split_i+1]))
                 else:
                     end_i = len(indices)
-                splited_dataset[split_i]['x'].append(x[indices[start_i: end_i]])
-                splited_dataset[split_i]['y'].append(y[indices[start_i: end_i]])
-        
-        for split_i in range(len(split_ratios)):
-            splited_dataset[split_i]['x'] = np.concatenate(splited_dataset[split_i]['x'])
-            splited_dataset[split_i]['y'] = np.concatenate(splited_dataset[split_i]['y'])
-    
+                    
+                for idx in indices[start_i: end_i]:
+                    splited_dataset[split_i]['x'].append(x[idx])
+                    splited_dataset[split_i]['y'].append(y[idx])
+                splited_dataset[split_i]['y'] = np.array(splited_dataset[split_i]['y'], dtype=np.int32)
     # Split according to distribution
     else:
         splited_dataset = dict()
@@ -110,13 +119,11 @@ def split_data(x: NDArray[np.uint8],
                     end_i = int(len(indices) * sum(label_dist[:split_i+1]))
                 else:
                     end_i = len(indices)
-                splited_dataset[split_i]['x'].append(x[indices[start_i: end_i]])
-                splited_dataset[split_i]['y'].append(y[indices[start_i: end_i]])
-        
-        for split_i in range(len(split_ratios)):
-            splited_dataset[split_i]['x'] = np.concatenate(splited_dataset[split_i]['x'])
-            splited_dataset[split_i]['y'] = np.concatenate(splited_dataset[split_i]['y'])        
-    
+                    
+                for idx in indices[start_i: end_i]:
+                    splited_dataset[split_i]['x'].append(x[idx])
+                    splited_dataset[split_i]['y'].append(y[idx])    
+                splited_dataset[split_i]['y'] = np.array(splited_dataset[split_i]['y'], dtype=np.int32)
     return splited_dataset
     
 def prepare_cifar10_datasets(train_val_test_split: List[float] = [0.8, 0.1, 0.1],
@@ -139,12 +146,10 @@ def prepare_cifar10_datasets(train_val_test_split: List[float] = [0.8, 0.1, 0.1]
     x, y = load_cifar10()
     
     # Split train/val/test set uniformly
-    splited_dataset = split_data(x, y, train_val_test_split, seed=seed)
-    train_set, val_data, test_data = splited_dataset[0], splited_dataset[1], splited_dataset[2]
+    train_set, val_data, test_data = split_data(x, y, train_val_test_split, seed=seed)
     
     # Split train set into supervised and unsupervised set
-    splited_dataset = split_data(train_set['x'], train_set['y'], s_u_split, seed=seed)
-    train_s, train_u = splited_dataset[0], splited_dataset[1]
+    train_s, train_u = split_data(train_set['x'], train_set['y'], s_u_split, seed=seed)
     
     # Split train set into clients
     if is_balance:
@@ -166,10 +171,8 @@ def prepare_cifar10_datasets(train_val_test_split: List[float] = [0.8, 0.1, 0.1]
             ]
     ratios = [1 / num_clients] * num_clients
     # Supervised set
-    splited_dataset = split_data(train_s['x'], train_s['y'], ratios, dist=dist, seed=seed)
-    client_train_s = splited_dataset
+    client_train_s = split_data(train_s['x'], train_s['y'], ratios, dist=dist, seed=seed)
     # Unsupervised set
-    splited_dataset = split_data(train_u['x'], train_u['y'], ratios, dist=dist, seed=seed)
-    client_train_u = splited_dataset
+    client_train_u = split_data(train_u['x'], train_u['y'], ratios, dist=dist, seed=seed)
     
     return client_train_s, client_train_u, val_data, test_data

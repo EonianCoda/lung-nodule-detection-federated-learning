@@ -7,6 +7,7 @@ from torchvision import transforms
 
 from PIL import Image
 from .randaug import RandAugmentMC
+from .utils import load_pickle
 
 cifar10_mean = (0.4914, 0.4822, 0.4465)
 cifar10_std = (0.2471, 0.2435, 0.2616)
@@ -32,7 +33,7 @@ def strong_augment(img_size: int = 32) -> transforms.Compose:
 
 class Cifar10Dataset(Dataset):
     def __init__(self,
-                data: Union[Dict[str, np.ndarray], str],
+                data: Union[Dict[str, Union[List[Image.Image], np.ndarray]], str],
                 batch_size: int = 64,
                 targets: List[str] = ['none']) -> None:
         """
@@ -43,13 +44,11 @@ class Cifar10Dataset(Dataset):
         super(Cifar10Dataset, self).__init__()
         
         if isinstance(data, str):
-            data = np.load(data)
+            data = load_pickle(data)
         
         # Convert to PIL Image
-        self.x = []
+        self.x = data['x']
         self.y = data['y'].astype(np.int64)
-        for i in range(len(data['x'])):
-            self.x.append(Image.fromarray(data['x'][i]))
         
         self.batch_size = batch_size    
         self.targets = targets

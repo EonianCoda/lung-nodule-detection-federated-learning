@@ -2,7 +2,7 @@ import argparse
 import os
 from os.path import join
 import numpy as np
-from fl_modules.dataset.utils import prepare_cifar10_datasets
+from fl_modules.dataset.utils import prepare_cifar10_datasets, load_pickle, save_pickle
 from fl_modules.utilities.utils import write_yaml
 
 def get_parser():
@@ -34,21 +34,20 @@ if __name__ == '__main__':
                                                                                     num_clients = num_clients,
                                                                                     is_balance = is_balance,
                                                                                     seed = seed)
+    val_save_path = join(save_dir, 'val.pkl')
+    test_save_path = join(save_dir, 'test.pkl')
     
-    val_save_path = join(save_dir, 'val.npz')
-    test_save_path = join(save_dir, 'test.npz')
-    np.savez(val_save_path, **val_set)
-    np.savez(test_save_path, **test_set)
-    
+    save_pickle(val_set, val_save_path)
+    save_pickle(test_set, test_save_path)
     
     clients_config = {}
     template = "fl_modules.dataset.cifar10_dataset.Cifar10Dataset"
     for client_id in client_train_s.keys():
-        train_s_save_path = join(save_dir, f'client_{client_id}_train_s.npz')
-        train_u_save_path = join(save_dir, f'client_{client_id}_train_u.npz')
+        train_s_save_path = join(save_dir, f'client_{client_id}_train_s.pkl')
+        train_u_save_path = join(save_dir, f'client_{client_id}_train_u.pkl')
         
-        np.savez(train_s_save_path, **client_train_s[client_id])
-        np.savez(train_u_save_path, **client_train_u[client_id])
+        save_pickle(client_train_s[client_id], train_s_save_path)
+        save_pickle(client_train_u[client_id], train_u_save_path)
         
         config = {'dataset': {'train_s': {'template': template, 'params': {'data': train_s_save_path, 'targets': ['weak'], 'batch_size': 64}},
                                     'train_u': {'template': template, 'params': {'data': train_u_save_path, 'targets': ['weak', 'strong'], 'batch_size': 64 * 7}},

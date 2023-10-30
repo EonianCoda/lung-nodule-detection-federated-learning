@@ -7,7 +7,7 @@ from torch.optim.lr_scheduler import LambdaLR
 
 from fl_modules.model.ema import EMA
 from fl_modules.utilities import get_local_time_in_taiwan, init_seed
-from fl_modules.scheduler import get_cosine_schedule_with_warmup
+from fl_modules.scheduler.cosine_scheduler import get_cosine_schedule_with_warmup
 def get_optimizer(model: nn.Module, 
                   optimizer_type: str,
                   learning_rate: float, 
