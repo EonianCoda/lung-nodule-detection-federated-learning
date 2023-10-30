@@ -388,7 +388,20 @@ class Server:
     def build_optimizer(self, model):
         optimizer_template = build_class(self.server_config['optimizer']['template'])
         params = copy.deepcopy(self.server_config['optimizer']['params'])
-        return optimizer_template(model.parameters(), **params)
+        if 'weight_decay' in params:
+            params['weight_decay'] = params['weight_decay'] * self.server_config['actions']['train']['params']['batch_size'] / self.num_of_client
+            
+            weight_decay = params['weight_decay']        
+            no_decay = ['bias', 'bn']
+            grouped_parameters = [
+                {'params': [p for n, p in model.named_parameters() if not any(
+                    nd in n for nd in no_decay)], 'weight_decay': weight_decay},
+                {'params': [p for n, p in model.named_parameters() if any(
+                    nd in n for nd in no_decay)], 'weight_decay': 0.0}
+            ]
+            return optimizer_template(grouped_parameters, **params)
+        else:
+            return optimizer_template(model.parameters(), **params)
     
     def _init_ema(self):
         self.apply_ema = self.server_config['ema']['apply']

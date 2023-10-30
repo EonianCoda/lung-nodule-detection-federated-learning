@@ -63,7 +63,7 @@ class FedAvg(Aggregation):
                             aggregated_optimizer_state_dict[key][state_key] += client_weights[client_name] * value
                 
                 for key in optimizer_state_dict.keys():
-                    if len(aggregated_optimizer_state_dict[key]) == 0:
+                    if key in aggregated_optimizer_state_dict and len(aggregated_optimizer_state_dict[key]) == 0:
                         del aggregated_optimizer_state_dict[key]
                         
         return aggregated_model_state_dict, customized_model_state_dict, aggregated_optimizer_state_dict, customized_optimizer_state_dict
