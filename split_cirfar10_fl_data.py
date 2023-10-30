@@ -1,7 +1,7 @@
 import argparse
 import os
 from os.path import join
-import numpy as np
+import shutil
 from fl_modules.dataset.utils import prepare_cifar10_datasets, load_pickle, save_pickle
 from fl_modules.utilities.utils import write_yaml
 
@@ -26,7 +26,8 @@ if __name__ == '__main__':
     is_balance = args.is_balance
     save_dir = args.save_dir
     
-    
+    if os.path.exists(save_dir):
+        shutil.rmtree(save_dir)
     os.makedirs(save_dir, exist_ok=True)
     
     client_train_s, client_train_u, val_set, test_set = prepare_cifar10_datasets(train_val_test_split=train_val_test_split,

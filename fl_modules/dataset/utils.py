@@ -35,7 +35,7 @@ def load_cifar10() -> Tuple[NDArray[np.uint8], NDArray[np.int32]]:
         x, y = [], []
         x.append(train_set.data)
         x.append(test_set.data)
-        x = np.stack(x)
+        x = np.concatenate(x, axis = 0)
         x_pillow = []
         for i in range(x.shape[0]):
             x_pillow.append(Image.fromarray(x[i]))
@@ -101,7 +101,8 @@ def split_data(x: List[Image.Image],
                 for idx in indices[start_i: end_i]:
                     splited_dataset[split_i]['x'].append(x[idx])
                     splited_dataset[split_i]['y'].append(y[idx])
-                splited_dataset[split_i]['y'] = np.array(splited_dataset[split_i]['y'], dtype=np.int32)
+        for split_i in range(len(split_ratios)):
+            splited_dataset[split_i]['y'] = np.array(splited_dataset[split_i]['y'], dtype=np.int32)
     # Split according to distribution
     else:
         splited_dataset = dict()
@@ -122,8 +123,9 @@ def split_data(x: List[Image.Image],
                     
                 for idx in indices[start_i: end_i]:
                     splited_dataset[split_i]['x'].append(x[idx])
-                    splited_dataset[split_i]['y'].append(y[idx])    
-                splited_dataset[split_i]['y'] = np.array(splited_dataset[split_i]['y'], dtype=np.int32)
+                    splited_dataset[split_i]['y'].append(y[idx])
+        for split_i in range(len(split_ratios)):
+            splited_dataset[split_i]['y'] = np.array(splited_dataset[split_i]['y'], dtype=np.int32)
     return splited_dataset
     
 def prepare_cifar10_datasets(train_val_test_split: List[float] = [0.8, 0.1, 0.1],
@@ -146,10 +148,12 @@ def prepare_cifar10_datasets(train_val_test_split: List[float] = [0.8, 0.1, 0.1]
     x, y = load_cifar10()
     
     # Split train/val/test set uniformly
-    train_set, val_data, test_data = split_data(x, y, train_val_test_split, seed=seed)
+    data = split_data(x, y, train_val_test_split, seed=seed)
+    train_data, val_data, test_data = data[0], data[1], data[2]
     
     # Split train set into supervised and unsupervised set
-    train_s, train_u = split_data(train_set['x'], train_set['y'], s_u_split, seed=seed)
+    data = split_data(train_data['x'], train_data['y'], s_u_split, seed=seed)
+    train_s, train_u = data[0], data[1]
     
     # Split train set into clients
     if is_balance:
