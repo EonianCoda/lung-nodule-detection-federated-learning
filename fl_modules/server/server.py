@@ -113,11 +113,11 @@ class Server:
                 logger.info(f"Client '{client.name}' val metric '{metric_name}' = {metric_value:.4f}")
             
             # Save client model, optimizer and ema state
-            client.save_state_dict(self.model, 'model', round_number)
+            client.save_state_dict(self.model, 'model', round_number, remove_previous = not self.save_local_state)
             if self.optimizer_aggregaion_strategy != 'reset':
-                client.save_state_dict(self.optimizer, 'optimizer', round_number)
+                client.save_state_dict(self.optimizer, 'optimizer', round_number, remove_previous = not self.save_local_state)
             if self.apply_ema:
-                client.save_state_dict(self.ema, 'ema', round_number)
+                client.save_state_dict(self.ema, 'ema', round_number, remove_previous = not self.save_local_state)
                 self.ema.restore()
                 
         self.write_tensorboard(client_train_metrics, round_number, 'train')
