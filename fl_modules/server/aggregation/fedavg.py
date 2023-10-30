@@ -21,7 +21,7 @@ class FedAvg(Aggregation):
         
         for client_name, client in clients.items():
             # Aggregate model
-            client.load_model_state(self.model, round_number, self.cpu_device)
+            client.load_state_dict(self.model, 'model', round_number, self.cpu_device)
             local_model_state_dict = self.model.state_dict()
             for key, value in local_model_state_dict.items():
                 # customized model state
@@ -39,7 +39,7 @@ class FedAvg(Aggregation):
                 
             # Aggregate optimizer
             if self.optimizer is not None:
-                client.load_optimizer_state(self.optimizer, round_number, self.cpu_device)
+                client.load_state_dict(self.optimizer, 'optimizer', round_number, self.cpu_device)
                 optimizer_state_dict = self.optimizer.state_dict()['state']
                 for key, states in optimizer_state_dict.items():
                     for state_key, value in states.items(): # state_key, e.g., 'momentum_buffer' for SGD, 'exp_avg' and 'exp_avg_sq' for Adam
