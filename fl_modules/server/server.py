@@ -308,13 +308,10 @@ class Server:
             test_metrics = client.test(model = self.model)
             client_test_metrics[client.name] = test_metrics
             
-            # Write metrics to csv file for each client
-            series_list_path = os.path.basename(client.test_series_list_path)
             
             params = copy.deepcopy(self.server_config['actions']['test']['params'])
             if params is None:
                 params = dict()    
-            params['series_list_path'] = series_list_path
             if 'log_metric' in params:
                 params.pop('log_metric')
             params['client_name'] = client_name
@@ -333,7 +330,6 @@ class Server:
         params = copy.deepcopy(self.server_config['actions']['test']['params'])
         if params == None:
             params = dict()
-        params['series_list_path'] = '+'.join([os.path.basename(client.test_series_list_path) for client in self._clients.values()])
         params['client_name'] = 'server'
         if 'log_metric' in params:
             params.pop('log_metric')
