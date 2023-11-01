@@ -307,35 +307,16 @@ class Server:
         for client_name, client in self._clients.items():
             test_metrics = client.test(model = self.model)
             client_test_metrics[client.name] = test_metrics
-            
-            
-            params = copy.deepcopy(self.server_config['actions']['test']['params'])
-            if params is None:
-                params = dict()    
-            if 'log_metric' in params:
-                params.pop('log_metric')
-            params['client_name'] = client_name
-            metrics.write_metric_csv(params, testing_save_path)
         
-        # Calculate average metrics of different nodule types
-        sum_test_metrics = dict()
+        
+        lines = ['client_name,accuracy']
         for client_name, metrics in client_test_metrics.items():
-            for nodule_type in metrics.keys():
-                if nodule_type not in sum_test_metrics:
-                    sum_test_metrics[nodule_type] = defaultdict(float)
-                for metric_key in ['tp', 'fp', 'fn', 'tn']:
-                    sum_test_metrics[nodule_type][metric_key] += metrics[nodule_type][metric_key]
-                    
-        # Write average metrics to csv file
-        params = copy.deepcopy(self.server_config['actions']['test']['params'])
-        if params == None:
-            params = dict()
-        params['client_name'] = 'server'
-        if 'log_metric' in params:
-            params.pop('log_metric')
-        metrics.write_metric_csv(params, testing_save_path)
-        
-        self.writer.add_hparams(hparam_dict=params, metric_dict = dict(sum_test_metrics['all']), run_name = 'testing_result')
+            line = [client_name, metrics['accuracy']]
+            lines.append(line)
+        lines = [line + '\n' for line in lines]
+        lines[-1] = lines[-1].strip()
+        with open(testing_save_path) as f:
+            f.writelines(lines)
         
     def _init_training(self):
         self._init_model()
