@@ -3,6 +3,8 @@ common:
   enable_progress_bar: True
   save_dir: './save'
   save_local_state: False
+  is_same_val_set: True
+  val_local: False
   
 server:
   total_rounds: 300
@@ -41,7 +43,7 @@ server:
       template: fl_modules.client.cifar10_logic.train_fixmatch
       params:
         unsupervised_conf_thrs: 0.95
-        num_steps: 1000
+        num_steps: 300
     val:
       template: fl_modules.client.cifar10_logic.validation
       params: ~

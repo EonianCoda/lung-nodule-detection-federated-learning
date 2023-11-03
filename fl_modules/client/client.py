@@ -60,13 +60,13 @@ class Client:
                                            batch_size=train_s_dataset.batch_size,
                                             shuffle = True,
                                             num_workers = self.num_workers,
-                                            pin_memory = True,
+                                            # pin_memory = True,
                                             # persistent_workers = True,
                                             drop_last = True)
             train_u_dataloader = DataLoader(train_u,
                                             shuffle = True,
                                             num_workers = self.num_workers,
-                                            pin_memory = True,
+                                            # pin_memory = True,
                                             # persistent_workers = True,
                                             drop_last = True)
             self.train_config['dataloader_s'] = train_s_dataloder
@@ -158,7 +158,6 @@ class Client:
         os.makedirs(os.path.dirname(save_path), exist_ok = True)
         with open(save_path, 'w') as f:
             json.dump(metrics, f, indent = 4)
-    
     
     @property
     def weight(self):

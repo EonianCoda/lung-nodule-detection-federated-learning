@@ -27,7 +27,8 @@ class Server:
         self.server_config = config['server']
         self.enable_progress_bar = self.config['common']['enable_progress_bar']
         self.save_local_state = self.config['common']['save_local_state']
-        
+        self.is_same_val_set = self.config['common']['is_same_val_set']
+        self.val_local = self.config['common']['val_local']
         # Resume Options
         self.resume = resume
         self.pretrained_model_path = pretrained_model_path
@@ -100,18 +101,18 @@ class Server:
                 logger.info(f"Client '{client.name}' train metric '{metric_name}' = {metric_value:.4f}")
                 
             # Validation
-            if self.apply_ema:
-                self.ema.apply_shadow()
-            
-            # For scaffold, we need to update control variate before validation
-            if hasattr(self.optimizer, 'update_control_variate'):
-                self.optimizer.update_control_variate()
+            if self.val_local:
+                if self.apply_ema:
+                    self.ema.apply_shadow()
                 
-            val_metrics = client.val(round_number, model = self.model, is_global = False)
-            client_val_local_metrics[client_name] = val_metrics
-            for metric_name, metric_value in val_metrics.items():
-                logger.info(f"Client '{client.name}' val metric '{metric_name}' = {metric_value:.4f}")
-            
+                # For scaffold, we need to update control variate before validation
+                if hasattr(self.optimizer, 'update_control_variate'):
+                    self.optimizer.update_control_variate()
+                    
+                val_metrics = client.val(round_number, model = self.model, is_global = False)
+                client_val_local_metrics[client_name] = val_metrics
+                for metric_name, metric_value in val_metrics.items():
+                    logger.info(f"Client '{client.name}' val metric '{metric_name}' = {metric_value:.4f}")
             # Save client model, optimizer and ema state
             client.save_state_dict(self.model, 'model', round_number, remove_previous = not self.save_local_state)
             if self.optimizer_aggregaion_strategy != 'reset':
@@ -121,7 +122,8 @@ class Server:
                 self.ema.restore()
                 
         self.write_tensorboard(client_train_metrics, round_number, 'train')
-        self.write_tensorboard(client_val_local_metrics, round_number, 'val_local')
+        if self.val_local:
+            self.write_tensorboard(client_val_local_metrics, round_number, 'val_local')
         
         # Aggregate
         self.apply_aggregation(round_number)
@@ -129,11 +131,19 @@ class Server:
         # Use aggregated model to validate
         logger.info(f"Use aggregated model to validate")
         self.load_working_state(round_number, list(self._clients.values())[0])
-        for client_name, client in self._clients.items():
+        if not self.is_same_val_set:
+            for client_name, client in self._clients.items():
+                val_metrics = client.val(round_number, model = self.model, is_global = True)
+                client_val_global_metrics[client_name] = val_metrics
+                for metric_name, metric_value in val_metrics.items():
+                    logger.info(f"Client '{client.name}' val metric '{metric_name}' = {metric_value:.4f}")
+        else:
             val_metrics = client.val(round_number, model = self.model, is_global = True)
-            client_val_global_metrics[client_name] = val_metrics
             for metric_name, metric_value in val_metrics.items():
-                logger.info(f"Client '{client.name}' val metric '{metric_name}' = {metric_value:.4f}")
+                logger.info(f"Client val metric '{metric_name}' = {metric_value:.4f}")
+            for client_name, _ in self._clients.items():
+                client_val_global_metrics[client_name] = val_metrics
+                
         self.write_tensorboard(client_val_global_metrics, round_number, 'val_global')
         
         # Save global model and optimizer
@@ -307,7 +317,6 @@ class Server:
         for client_name, client in self._clients.items():
             test_metrics = client.test(model = self.model)
             client_test_metrics[client.name] = test_metrics
-        
         
         lines = ['client_name,accuracy']
         for client_name, metrics in client_test_metrics.items():
