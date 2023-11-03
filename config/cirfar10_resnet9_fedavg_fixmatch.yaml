@@ -12,11 +12,10 @@ server:
   best_model_metric_name: accuracy
   
   model: 
-    template: fl_modules.model.wide_resnet.WideResNet
+    template: fl_modules.model.resnet9.ResNet9
     params:
       num_classes: 10
-      depth: 28
-      widen_factor: 2
+      in_channels: 3
 
   ema:
     apply: True
@@ -34,7 +33,7 @@ server:
   optimizer: 
     template: torch.optim.SGD
     params:
-      lr: 0.03
+      lr: 0.003
       momentum: 0.9
       weight_decay: 0.0005
       nesterov: True

@@ -10,9 +10,9 @@ def get_parser():
     parser.add_argument('--num_clients', type=int, default=10)
     parser.add_argument('--seed', type = int, default = 1029)
     parser.add_argument('--train_val_test_split', nargs=3, type=float, default=[0.9, 0.05, 0.05])
-    parser.add_argument('--num_labeled', type = int, default = 100)
+    parser.add_argument('--num_labeled', type = int, default = 50)
     parser.add_argument('--bs', type=int, default=64)
-    parser.add_argument('--iters', type=int, default=None)
+    parser.add_argument('--iters', type=int, default=300)
     parser.add_argument('--is_balance', action='store_false', default=True)
     parser.add_argument('--save_dir', type=str, default='./data/fl_data')
     

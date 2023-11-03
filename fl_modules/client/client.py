@@ -52,10 +52,9 @@ class Client:
     def train(self, round_number: int, model, optimizer, ema, scheduler):
         logger.info(f"Client '{self.name}' starts training!")
         # Lazy initialize dataset
-        if self.train_config.get('dataset', None) == None:
+        if self.train_config.get('dataloader_s', None) == None:
             train_s_dataset = build_instance(self.dataset_config['train_s']['template'], self.dataset_config['train_s']['params'])
             train_u = build_instance(self.dataset_config['train_u']['template'], self.dataset_config['train_u']['params'])
-            
             logger.info(f"Client '{self.name}' has {len(train_s_dataset.x)} labeled data and {len(train_u.x)} unlabeled data")
             train_s_dataloder = DataLoader(train_s_dataset,
                                            batch_size=train_s_dataset.batch_size,
@@ -85,7 +84,7 @@ class Client:
     def val(self, round_number: int, model, is_global: bool = False):
         logger.info(f"Client '{self.name}' starts validation!")
         # Lazy initialize dataset
-        if self.val_config.get('dataset', None) == None:
+        if self.val_config.get('dataloader', None) == None:
             val_dataset = build_instance(self.dataset_config['val']['template'], self.dataset_config['val']['params'])
             dataloader = DataLoader(val_dataset,
                                     batch_size = val_dataset.batch_size,
@@ -105,7 +104,7 @@ class Client:
     def test(self, model):
         logger.info(f'Client {self.name} starts testing!')
         # Lazy initialize dataset
-        if self.test_config.get('dataset', None) == None:
+        if self.test_config.get('dataloader', None) == None:
             test_set = build_instance(self.dataset_config['test']['template'], self.dataset_config['test']['params'])
             dataloader = DataLoader(test_set,
                                     batch_size = test_set.batch_size,

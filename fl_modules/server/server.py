@@ -344,13 +344,18 @@ class Server:
         testing_save_path = join(self.exp_folder, 'testing_result.csv')
         # Testing
         client_test_metrics = dict()
-        for client_name, client in self._clients.items():
-            test_metrics = client.test(model = self.model)
-            client_test_metrics[client.name] = test_metrics
+        if not self.is_same_val_set:
+            for client_name, client in self._clients.items():
+                test_metrics = client.test(model = self.model)
+                client_test_metrics[client.name] = test_metrics
+        else:
+            test_metrics = self._clients['client1'].test(model = self.model)
+            for client_name in self._clients.keys():
+                client_test_metrics[client_name] = test_metrics
         
         lines = ['client_name,accuracy']
         for client_name, metrics in client_test_metrics.items():
-            line = [client_name, metrics['accuracy']]
+            line = f'{client_name},{metrics["accuracy"]}'
             lines.append(line)
         lines = [line + '\n' for line in lines]
         lines[-1] = lines[-1].strip()
