@@ -5,7 +5,7 @@ common:
   save_local_state: False
   is_same_val_set: True
   val_local: False
-  clients_fraction: 0.1
+  clients_fraction: 0.5
 
 server:
   total_rounds: 100

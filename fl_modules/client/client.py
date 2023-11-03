@@ -142,6 +142,7 @@ class Client:
             if os.path.exists(save_path):
                 state_dict = torch.load(save_path, map_location = device)
                 instance.load_state_dict(state_dict)
+                return
         raise ValueError(f'No state dict found for {target}!')    
             
     def save_metrics(self, metrics: Dict[str, float], task: str, round_number: int):

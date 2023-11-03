@@ -139,7 +139,8 @@ class Server:
         logger.info(f"Use aggregated model to validate")
         self.load_working_state(round_number, list(self._clients.values())[0])
         if not self.is_same_val_set:
-            for client_name, client in self._clients.items():
+            for client_name in self.selected_client_names:
+                client = self._clients[client_name]
                 val_metrics = client.val(round_number, model = self.model, is_global = True)
                 client_val_global_metrics[client_name] = val_metrics
                 for metric_name, metric_value in val_metrics.items():
@@ -148,7 +149,7 @@ class Server:
             val_metrics = client.val(round_number, model = self.model, is_global = True)
             for metric_name, metric_value in val_metrics.items():
                 logger.info(f"Client val metric '{metric_name}' = {metric_value:.4f}")
-            for client_name, _ in self._clients.items():
+            for client_name in self.selected_client_names:
                 client_val_global_metrics[client_name] = val_metrics
                 
         self.write_tensorboard(client_val_global_metrics, round_number, 'val_global')
@@ -198,7 +199,7 @@ class Server:
     def apply_aggregation(self, round_number: int):
         logger.info(f"Aggregate model and optimizer")
         
-        clients = {'client_name':self._clients[client_name] for client_name in self.selected_client_names}
+        clients = {client_name: self._clients[client_name] for client_name in self.selected_client_names}
         client_weights = self.client_weights
         aggregated_model_state_dict, customized_model_state_dict, aggregated_optimizer_state_dict, customized_optimizer_state_dict = self.aggregate_fn(clients, client_weights, round_number)
         if not self.is_customized_model:
