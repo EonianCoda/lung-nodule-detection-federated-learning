@@ -349,7 +349,7 @@ class Server:
                 test_metrics = client.test(model = self.model)
                 client_test_metrics[client.name] = test_metrics
         else:
-            test_metrics = self._clients['client1'].test(model = self.model)
+            test_metrics = self._clients['Client_0'].test(model = self.model)
             for client_name in self._clients.keys():
                 client_test_metrics[client_name] = test_metrics
         
