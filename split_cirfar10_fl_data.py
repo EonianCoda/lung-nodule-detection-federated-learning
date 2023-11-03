@@ -2,15 +2,15 @@ import argparse
 import os
 from os.path import join
 import shutil
-from fl_modules.dataset.utils import prepare_cifar10_datasets, load_pickle, save_pickle
+from fl_modules.dataset.utils import prepare_cifar10_datasets, save_pickle
 from fl_modules.utilities.utils import write_yaml
 
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_clients', type=int, default=10)
     parser.add_argument('--seed', type = int, default = 1029)
-    parser.add_argument('--train_val_test_split', type = list, default = [0.8, 0.1, 0.1], nargs='+')
-    parser.add_argument('--supervised_ratio', type = float, default = 0.1)
+    parser.add_argument('--train_val_test_split', nargs=3, type=float, default=[0.9, 0.05, 0.05])
+    parser.add_argument('--num_labeled', type = int, default = 100)
     parser.add_argument('--bs', type=int, default=64)
     parser.add_argument('--iters', type=int, default=None)
     parser.add_argument('--is_balance', action='store_false', default=True)
@@ -25,7 +25,7 @@ if __name__ == '__main__':
     seed = args.seed
     num_clients = args.num_clients
     train_val_test_split = args.train_val_test_split
-    supervised_ratio = args.supervised_ratio
+    # supervised_ratio = args.supervised_ratio
     is_balance = args.is_balance
     save_dir = args.save_dir
     iters = args.iters
@@ -34,6 +34,7 @@ if __name__ == '__main__':
         shutil.rmtree(save_dir)
     os.makedirs(save_dir, exist_ok=True)
     
+    supervised_ratio =  args.num_labeled / ((60000 * train_val_test_split[0]) / num_clients)
     client_train_s, client_train_u, val_set, test_set = prepare_cifar10_datasets(train_val_test_split=train_val_test_split,
                                                                                     s_u_split=[supervised_ratio, 1 - supervised_ratio],
                                                                                     num_clients = num_clients,

@@ -56,17 +56,18 @@ class Client:
             train_s_dataset = build_instance(self.dataset_config['train_s']['template'], self.dataset_config['train_s']['params'])
             train_u = build_instance(self.dataset_config['train_u']['template'], self.dataset_config['train_u']['params'])
             
+            logger.info(f"Client '{self.name}' has {len(train_s_dataset.x)} labeled data and {len(train_u.x)} unlabeled data")
             train_s_dataloder = DataLoader(train_s_dataset,
                                            batch_size=train_s_dataset.batch_size,
                                             shuffle = True,
                                             num_workers = self.num_workers,
-                                            # pin_memory = True,
+                                            pin_memory = True,
                                             # persistent_workers = True,
                                             drop_last = True)
             train_u_dataloader = DataLoader(train_u,
                                             shuffle = True,
                                             num_workers = self.num_workers,
-                                            # pin_memory = True,
+                                            pin_memory = True,
                                             # persistent_workers = True,
                                             drop_last = True)
             self.train_config['dataloader_s'] = train_s_dataloder
@@ -136,10 +137,13 @@ class Client:
                         target: str,
                         round_number: int,
                         device: torch.device):
-        save_path = join(self.client_folder, target, f'{round_number}.pt')
-        state_dict = torch.load(save_path, map_location = device)
-        instance.load_state_dict(state_dict)
-    
+        for r in range(round_number, -1, -1):
+            save_path = join(self.client_folder, target, f'{round_number}.pt')
+            if os.path.exists(save_path):
+                state_dict = torch.load(save_path, map_location = device)
+                instance.load_state_dict(state_dict)
+        raise ValueError(f'No state dict found for {target}!')    
+            
     def save_metrics(self, metrics: Dict[str, float], task: str, round_number: int):
         """Save metrics to json file
         Args:

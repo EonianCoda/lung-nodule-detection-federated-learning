@@ -1,6 +1,7 @@
 import os
 from os.path import join
 import copy
+import random
 import json
 import logging
 from typing import List, Dict, Any
@@ -29,6 +30,7 @@ class Server:
         self.save_local_state = self.config['common']['save_local_state']
         self.is_same_val_set = self.config['common']['is_same_val_set']
         self.val_local = self.config['common']['val_local']
+        self.clients_fraction = self.config['common']['clients_fraction']
         # Resume Options
         self.resume = resume
         self.pretrained_model_path = pretrained_model_path
@@ -46,6 +48,9 @@ class Server:
         self._init_training()
         total_rounds = self.config['server']['total_rounds']
         # Training and validation
+        logger.info("Start federated learning")
+        logger.info(f"Total rounds: {total_rounds}")
+        logger.info(f"There are {self.num_of_client} clients: {list(self._clients.keys())} and {self.clients_fraction * 100:.2f}% of them are selected every round")
         for round_number in range(self.start_round, total_rounds):
             logger.info(f"Round {round_number}/{total_rounds - 1}")
             self.one_round(round_number)
@@ -85,7 +90,9 @@ class Server:
         client_val_local_metrics = dict()
         client_val_global_metrics = dict()
         
-        for client_name, client in self._clients.items():
+        self.select_clients(round_number)
+        for client_name in self.selected_client_names:
+            client = self._clients[client_name]
             self.load_working_state(round_number, client)
             # For Fedrox or FedProxAdam, we need to update global weights before training
             if hasattr(self.optimizer, 'update_global_weights'):
@@ -100,11 +107,10 @@ class Server:
             for metric_name, metric_value in train_metrics.items():
                 logger.info(f"Client '{client.name}' train metric '{metric_name}' = {metric_value:.4f}")
                 
+            if self.apply_ema:
+                self.ema.apply_shadow()
             # Validation
             if self.val_local:
-                if self.apply_ema:
-                    self.ema.apply_shadow()
-                
                 # For scaffold, we need to update control variate before validation
                 if hasattr(self.optimizer, 'update_control_variate'):
                     self.optimizer.update_control_variate()
@@ -117,6 +123,7 @@ class Server:
             client.save_state_dict(self.model, 'model', round_number, remove_previous = not self.save_local_state)
             if self.optimizer_aggregaion_strategy != 'reset':
                 client.save_state_dict(self.optimizer, 'optimizer', round_number, remove_previous = not self.save_local_state)
+                
             if self.apply_ema:
                 client.save_state_dict(self.ema, 'ema', round_number, remove_previous = not self.save_local_state)
                 self.ema.restore()
@@ -168,14 +175,36 @@ class Server:
                     f.write(f'{key}: {value:.4f}\n')
             
             self.save_global_state(join(self.exp_folder, 'best_model.pth'))
+    
+    def select_clients(self, round_number: int):
+        """Select clients for current round
+        Args:
+            round_number (int): Current round
+        """
+        # Select clients
+        if self.clients_fraction is None:
+            selected_client_names = list(self._clients.keys())
+        else:
+            num_of_clients = len(self._clients)
+            num_of_selected_clients = int(num_of_clients * self.clients_fraction)
+            client_names = list(self._clients.keys())
+            random.shuffle(client_names)
+            selected_client_names = client_names[:num_of_selected_clients]
+            with open(join(self.server_folder, 'selected_clients.txt'), 'a') as f:
+                f.write('Round {:3d}: {}\n'.format(round_number, selected_client_names))
+        
+        self.selected_client_names = selected_client_names
    
     def apply_aggregation(self, round_number: int):
         logger.info(f"Aggregate model and optimizer")
-        aggregated_model_state_dict, customized_model_state_dict, aggregated_optimizer_state_dict, customized_optimizer_state_dict = self.aggregate_fn(self._clients, self.client_weights, round_number)
+        
+        clients = {'client_name':self._clients[client_name] for client_name in self.selected_client_names}
+        client_weights = self.client_weights
+        aggregated_model_state_dict, customized_model_state_dict, aggregated_optimizer_state_dict, customized_optimizer_state_dict = self.aggregate_fn(clients, client_weights, round_number)
         if not self.is_customized_model:
             torch.save(aggregated_model_state_dict, self.global_model)
         else:
-            for client_name in self._clients.keys():
+            for client_name in self.selected_client_names:
                 aggregated_model_state_dict.update(customized_model_state_dict[client_name])
                 torch.save(aggregated_model_state_dict, join(self.working_folder, f'{client_name}_model.pt'))
         
@@ -189,7 +218,7 @@ class Server:
             optimizer_state_dict['state'] = aggregated_optimizer_state_dict
             torch.save(optimizer_state_dict, self.global_optimizer)
         else:
-            for client_name in self._clients.keys():
+            for client_name in self.selected_client_names:
                 for param_key in aggregated_optimizer_state_dict.keys():
                     custom = customized_optimizer_state_dict[client_name].get(param_key, dict())
                     for custom_state_key in custom.keys():
@@ -486,16 +515,11 @@ class Server:
     
     @property
     def client_weights(self) -> Dict[str, float]:
-        if getattr(self, '_client_weights', None) is not None:
-            return self._client_weights
-        
         client_weights = dict()
-        for client_name, client in self._clients.items():
-            client_weights[client_name] = client.weight
-            
+        for client_name in self.selected_client_names:
+            client_weights[client_name] = self._clients[client_name].weight    
         # Normalize client weights
         count_samples = sum(client_weights.values()) 
         for client_name, weight in client_weights.items():
             client_weights[client_name] = weight / count_samples
-        self._client_weights = client_weights
-        return self._client_weights
+        return client_weights

@@ -5,11 +5,12 @@ common:
   save_local_state: False
   is_same_val_set: True
   val_local: False
-  
-server:
-  total_rounds: 300
-  best_model_metric_name: accuracy
+  clients_fraction: 0.1
 
+server:
+  total_rounds: 100
+  best_model_metric_name: accuracy
+  
   model: 
     template: fl_modules.model.wide_resnet.WideResNet
     params:
@@ -18,7 +19,7 @@ server:
       widen_factor: 2
 
   ema:
-    apply: False
+    apply: True
     params:
       decay: 0.99
 
@@ -43,7 +44,7 @@ server:
       template: fl_modules.client.cifar10_logic.train_fixmatch
       params:
         unsupervised_conf_thrs: 0.95
-        num_steps: 300
+        num_steps: 200
     val:
       template: fl_modules.client.cifar10_logic.validation
       params: ~
