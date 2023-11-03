@@ -39,7 +39,7 @@ class Client:
         self.device = device
         self.enable_progress_bar = enable_progress_bar
 
-        self.num_workers = os.cpu_count() // 4
+        self.num_workers = max(os.cpu_count() // 4, 2)
 
     def build_action(self, action_fn, action_config: Dict[str, Any], action_name: str):
         action_config = copy.deepcopy(action_config) if action_config != None else dict()
@@ -61,14 +61,13 @@ class Client:
                                             shuffle = True,
                                             num_workers = self.num_workers,
                                             pin_memory = True,
-                                            persistent_workers = True,
+                                            # persistent_workers = True,
                                             drop_last = True)
             train_u_dataloader = DataLoader(train_u,
-                                            batch_size = train_u.batch_size,
                                             shuffle = True,
                                             num_workers = self.num_workers,
                                             pin_memory = True,
-                                            persistent_workers = True,
+                                            # persistent_workers = True,
                                             drop_last = True)
             self.train_config['dataloader_s'] = train_s_dataloder
             self.train_config['dataloader_u'] = train_u_dataloader

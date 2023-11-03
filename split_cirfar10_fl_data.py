@@ -11,8 +11,11 @@ def get_parser():
     parser.add_argument('--seed', type = int, default = 1029)
     parser.add_argument('--train_val_test_split', type = list, default = [0.8, 0.1, 0.1], nargs='+')
     parser.add_argument('--supervised_ratio', type = float, default = 0.1)
+    parser.add_argument('--bs', type=int, default=64)
+    parser.add_argument('--iters', type=int, default=None)
     parser.add_argument('--is_balance', action='store_false', default=True)
     parser.add_argument('--save_dir', type=str, default='./data/fl_data')
+    
     parser.add_argument('--client_config_save_path', type=str, default='./config/clients/cifar10_client_config.yaml')
     args = parser.parse_args()
     return args
@@ -25,7 +28,8 @@ if __name__ == '__main__':
     supervised_ratio = args.supervised_ratio
     is_balance = args.is_balance
     save_dir = args.save_dir
-    
+    iters = args.iters
+    batch_size = args.bs
     if os.path.exists(save_dir):
         shutil.rmtree(save_dir)
     os.makedirs(save_dir, exist_ok=True)
@@ -50,10 +54,10 @@ if __name__ == '__main__':
         save_pickle(client_train_s[client_id], train_s_save_path)
         save_pickle(client_train_u[client_id], train_u_save_path)
         
-        config = {'dataset': {'train_s': {'template': template, 'params': {'data': train_s_save_path, 'targets': ['weak'], 'batch_size': 64}},
-                                    'train_u': {'template': template, 'params': {'data': train_u_save_path, 'targets': ['weak', 'strong'], 'batch_size': 64 * 7}},
-                                    'val': {'template': template, 'params': {'data': val_save_path, 'batch_size': 64 * 2}},
-                                    'test': {'template': template, 'params': {'data': test_save_path, 'batch_size': 64 * 2}}}}
+        config = {'dataset': {'train_s': {'template': template, 'params': {'data': train_s_save_path, 'targets': ['weak'], 'batch_size': batch_size, 'iters': iters}},
+                                    'train_u': {'template': template, 'params': {'data': train_u_save_path, 'targets': ['weak', 'strong'], 'batch_size': batch_size * 7, 'iters': iters}},
+                                    'val': {'template': template, 'params': {'data': val_save_path, 'batch_size': batch_size * 2}},
+                                    'test': {'template': template, 'params': {'data': test_save_path, 'batch_size': batch_size * 2}}}}
         
         clients_config[f'Client_{client_id}'] = config
     write_yaml(args.client_config_save_path, clients_config)

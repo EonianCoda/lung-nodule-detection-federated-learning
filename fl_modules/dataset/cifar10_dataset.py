@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Dict, Tuple, List, Union
-
+import random
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -35,7 +35,9 @@ class Cifar10Dataset(Dataset):
     def __init__(self,
                 data: Union[Dict[str, Union[List[Image.Image], np.ndarray]], str],
                 batch_size: int = 64,
-                targets: List[str] = ['none']) -> None:
+                targets: List[str] = ['none'],
+                iters: int = None
+                ) -> None:
         """
         Args:
             data: A dictionary with keys 'x' and 'y' or a path to the numpy array
@@ -56,7 +58,26 @@ class Cifar10Dataset(Dataset):
         self.strong = strong_augment()
         self.normalize = normalize()
         
+        if iters != None:
+            self.set_iters(iters)
+        else:
+            self.idx_mapping = list(range(0, len(self.x)))
+
+    def set_iters(self, iters: int) -> None:
+        self.iters = iters
+        num_samples = iters * self.batch_size
+        self.idx_mapping = []
+        for _ in range(num_samples // len(self.x)):
+            self.idx_mapping.extend(list(range(0, len(self.x))))
+        
+        # Add the remaining samples
+        if num_samples % len(self.x) != 0:
+            idxs = list(range(0, len(self.x)))
+            random.shuffle(idxs)
+            self.idx_mapping.extend(idxs[0:num_samples % len(self.x)])
+        
     def __getitem__(self, idx: int) -> List[torch.Tensor]:
+        idx = self.idx_mapping[idx]
         x = self.x[idx]
         y = self.y[idx]
         
@@ -79,4 +100,7 @@ class Cifar10Dataset(Dataset):
         return image
     
     def __len__(self) -> int:
-        return len(self.x)
+        if hasattr(self, 'iters'):
+            return self.iters * self.batch_size
+        else:
+            return len(self.x)
