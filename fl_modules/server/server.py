@@ -359,7 +359,7 @@ class Server:
             lines.append(line)
         lines = [line + '\n' for line in lines]
         lines[-1] = lines[-1].strip()
-        with open(testing_save_path) as f:
+        with open(testing_save_path, 'w') as f:
             f.writelines(lines)
         
     def _init_training(self):
