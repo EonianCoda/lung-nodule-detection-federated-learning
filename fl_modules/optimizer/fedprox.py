@@ -90,10 +90,9 @@ class FedProx(Optimizer):
         return loss
 
     def update_global_weights(self):
-        copy_params = [p.clone().detach() for p in self.param_groups[0]['params']]
         for param_group in self.param_groups:
+            copy_params = [p.clone().detach() for p in param_group['params'] if p.requires_grad]
             param_group['w_old'] = copy_params
-
 
 class FedProxAdam(Optimizer):
     """FedProxAdam optimizer."""
@@ -124,8 +123,8 @@ class FedProxAdam(Optimizer):
             group.setdefault('amsgrad', False)
 
     def update_global_weights(self):
-        copy_params = [p.clone().detach() for p in self.param_groups[0]['params'] if p.requires_grad]
         for param_group in self.param_groups:
+            copy_params = [p.clone().detach() for p in param_group['params'] if p.requires_grad]
             param_group['w_old'] = copy_params
 
     @torch.no_grad()

@@ -54,8 +54,8 @@ class Client:
         # Lazy initialize dataset
         if self.train_config.get('dataloader_s', None) == None:
             train_s_dataset = build_instance(self.dataset_config['train_s']['template'], self.dataset_config['train_s']['params'])
-            train_u = build_instance(self.dataset_config['train_u']['template'], self.dataset_config['train_u']['params'])
-            logger.info(f"Client '{self.name}' has {len(train_s_dataset.x)} labeled data and {len(train_u.x)} unlabeled data")
+            train_u_dataset = build_instance(self.dataset_config['train_u']['template'], self.dataset_config['train_u']['params'])
+            logger.info(f"Client '{self.name}' has {len(train_s_dataset.x)} labeled data and {len(train_u_dataset.x)} unlabeled data")
             train_s_dataloder = DataLoader(train_s_dataset,
                                            batch_size=train_s_dataset.batch_size,
                                             shuffle = True,
@@ -63,7 +63,8 @@ class Client:
                                             pin_memory = True,
                                             # persistent_workers = True,
                                             drop_last = True)
-            train_u_dataloader = DataLoader(train_u,
+            train_u_dataloader = DataLoader(train_u_dataset,
+                                            batch_size=train_u_dataset.batch_size,
                                             shuffle = True,
                                             num_workers = self.num_workers,
                                             pin_memory = True,
