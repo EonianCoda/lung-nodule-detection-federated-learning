@@ -61,6 +61,10 @@ class Server:
         self.testing_and_save_metrics()
         self.writer.close()
         
+        if not self.save_local_state:
+            if os.path.exists(join(self.server_folder, 'model')):
+                shutil.rmtree(join(self.server_folder, 'model'))
+            
         # Draw figure
         drawer = MetricDrawer(join(self.exp_folder, 'tensorboard'))
         figure_save_folder = join(self.exp_folder, 'figure')
