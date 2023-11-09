@@ -11,9 +11,9 @@ def get_parser():
     parser.add_argument('--seed', type = int, default = 1029)
     parser.add_argument('--train_val_test_split', nargs=3, type=float, default=[0.9, 0.05, 0.05])
     parser.add_argument('--num_labeled', type = int, default = 50)
-    parser.add_argument('--bs', type=int, default=64)
-    parser.add_argument('--iters', type=int, default=300)
-    parser.add_argument('--is_balance', action='store_false', default=True)
+    parser.add_argument('--bs', type=int, default = 64)
+    parser.add_argument('--iters', type=int, default = 300)
+    parser.add_argument('--is_unbalance', action='store_true', default=False)
     parser.add_argument('--save_dir', type=str, default='./data/fl_data')
     
     parser.add_argument('--client_config_save_path', type=str, default='./config/clients/cifar10_client_config.yaml')
@@ -25,8 +25,7 @@ if __name__ == '__main__':
     seed = args.seed
     num_clients = args.num_clients
     train_val_test_split = args.train_val_test_split
-    # supervised_ratio = args.supervised_ratio
-    is_balance = args.is_balance
+    is_unbalance = args.is_unbalance
     save_dir = args.save_dir
     iters = args.iters
     batch_size = args.bs
@@ -34,11 +33,10 @@ if __name__ == '__main__':
         shutil.rmtree(save_dir)
     os.makedirs(save_dir, exist_ok=True)
     
-    supervised_ratio =  args.num_labeled / ((60000 * train_val_test_split[0]) / num_clients)
     client_train_s, client_train_u, val_set, test_set = prepare_cifar10_datasets(train_val_test_split=train_val_test_split,
-                                                                                    s_u_split=[supervised_ratio, 1 - supervised_ratio],
+                                                                                    num_labeled = args.num_labeled,
                                                                                     num_clients = num_clients,
-                                                                                    is_balance = is_balance,
+                                                                                    is_balanced=not is_unbalance,
                                                                                     seed = seed)
     val_save_path = join(save_dir, 'val.pkl')
     test_save_path = join(save_dir, 'test.pkl')
