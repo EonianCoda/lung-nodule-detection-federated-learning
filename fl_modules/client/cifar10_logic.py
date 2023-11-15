@@ -54,14 +54,17 @@ def train_fedmatch(model: nn.Module,
     
     progress_bar = get_progress_bar('Train', num_steps, 0, 1) if enable_progress_bar else None
 
+    num_helper_agents = len(helper_agent_models)
+    for helper_agent_model in helper_agent_models:
+        helper_agent_model.eval()
+        
     losses_s = AverageMeter()
     losses_u = AverageMeter()
     losses = AverageMeter()
     accs_s = AverageMeter()
+    if num_helper_agents > 0:
+        losses_icc = AverageMeter()
     
-    num_helper_agents = len(helper_agent_models)
-    for helper_agent_model in helper_agent_models:
-        helper_agent_model.eval()
     
     if iter_dataloader_s is None:
         iter_dataloader_s = iter(dataloader_s)
@@ -99,18 +102,19 @@ def train_fedmatch(model: nn.Module,
             loss_u = 0
             loss_icc = 0
             x_u_w = x[x_s.shape[0]:x_s.shape[0] + x_u_w.shape[0]][mask == 1]
+            logits_u_w = logits_u_w[mask == 1]
             with torch.no_grad():
                 logits_helper = [helper_agent_model(x_u_w) for helper_agent_model in helper_agent_models]
                 
-                
             for logits in logits_helper:
-                loss_icc = loss_icc + F.kl_div(F.log_softmax(logits_u_w, dim=-1), F.softmax(logits, dim=-1), reduction='mean') * LAMBDA_I
+                loss_icc = loss_icc + F.kl_div(F.log_softmax(logits_u_w, dim=-1), F.softmax(logits, dim=-1), reduction='batchmean') * LAMBDA_I
                 
             # Agreement-based Pseudo Labeling
-            pseudo_labels = torch.sum([F.one_hot(torch.argmax(logits, dim=-1), num_classes=10) for logits in logits_helper], axis=0)
-            pseudo_label = F.one_hot(pseudo_label[mask == 1], num_classes=10)
-            targets_u = torch.sum([pseudo_label, pseudo_labels], axis=0)
-            targets_u = torch.argmax(targets_u, dim=-1)
+            with torch.no_grad():
+                pseudo_labels = torch.sum(torch.stack([F.one_hot(torch.argmax(logits, dim=-1), num_classes=10) for logits in logits_helper], axis=0), axis=0)
+                pseudo_label = F.one_hot(targets_u[mask == 1], num_classes=10)
+                targets_u = pseudo_label + pseudo_labels
+                targets_u = torch.argmax(targets_u, dim=-1)
 
             loss_u = F.cross_entropy(logits_u_s[mask == 1], targets_u, reduction='mean') * LAMBDA_U + loss_icc
         else:
@@ -135,6 +139,8 @@ def train_fedmatch(model: nn.Module,
         losses_s.update(loss_s.item())
         losses_u.update(loss_u.item())
         losses.update(loss_final.item())
+        if num_helper_agents > 0:
+            losses_icc.update(loss_icc.item())
         acc = torch.sum(torch.argmax(logits_s, dim=1) == targets_s).item() / x_s.shape[0]
         accs_s.update(acc)
         
@@ -142,8 +148,8 @@ def train_fedmatch(model: nn.Module,
                     'loss_s': losses_s.avg,
                     'loss_u': losses_u.avg,
                     'acc_s': accs_s.avg}
-        if getattr(locals(), 'loss_icc', None) is not None:
-            post_fix['loss_icc'] = loss_icc.item()
+        if num_helper_agents > 0:
+            post_fix['loss_icc'] = losses_icc.avg
         if scheduler is not None:
             post_fix['lr'] = scheduler.get_last_lr()[0]
         if progress_bar is not None:
@@ -151,7 +157,7 @@ def train_fedmatch(model: nn.Module,
             progress_bar.update()
     if progress_bar is not None:
         progress_bar.close()
-                
+
     train_metrics = {'acc_s': accs_s.avg,
                     'loss': losses.avg,
                     'loss_s': losses_s.avg,

@@ -63,7 +63,8 @@ class Server:
             from scipy.stats import truncnorm
             import numpy as np
             mu, std, lower, upper = 125,125,0,255
-            self.rgauss = (truncnorm((lower - mu) / std, (upper - mu) / std, loc=mu, scale=std).rvs((1,32,32,3))).astype(np.float32)/255
+            self.rgauss = (truncnorm((lower - mu) / std, (upper - mu) / std, loc=mu, scale=std).rvs((1,3,32,32))).astype(np.float32) / 255
+            self.rgauss = torch.from_numpy(self.rgauss)
             self.cid_to_vectors = {}
     
     def start(self):
@@ -410,16 +411,16 @@ class Server:
         if self.num_helper_agents > 0 and (round_number + 1) % self.update_helper_agents_every_n_rounds == 0:
             self.cid_to_vectors = {}
             shutil.rmtree(self.helper_agents_folder)
-            
+            os.makedirs(self.helper_agents_folder, exist_ok=True)
             logger.info(f"Update helper agents at round {round_number}")
             for client_name in self._clients.keys():
                 client = self._clients[client_name]
-                if not client.has_helper_agent():
+                if not client.has_state_dict('model', round_number):
                     continue
                 client.load_state_dict(self.model, 'model', round_number, self.device)
                 self.model.eval()
                 with torch.no_grad():
-                    self.cid_to_vectors[client_name] = self.model(self.rgauss.to(self.device)).cpu().numpy()
+                    self.cid_to_vectors[client_name] = self.model(self.rgauss.to(self.device)).cpu().numpy().squeeze()
                 torch.save(self.model.state_dict(), join(self.helper_agents_folder, f'{client_name}.pt'))
             logger.info(f"There are {len(self.cid_to_vectors)} helper agents")
             self.vid_to_cid = list(self.cid_to_vectors.keys())

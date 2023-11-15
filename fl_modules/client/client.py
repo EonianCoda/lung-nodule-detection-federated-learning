@@ -140,7 +140,7 @@ class Client:
                         round_number: int,
                         device: torch.device):
         for r in range(round_number, -1, -1):
-            save_path = join(self.client_folder, target, f'{round_number}.pt')
+            save_path = join(self.client_folder, target, f'{r}.pt')
             if os.path.exists(save_path):
                 state_dict = torch.load(save_path, map_location = device)
                 instance.load_state_dict(state_dict)
@@ -149,7 +149,7 @@ class Client:
     
     def has_state_dict(self, target: str, round_number: int):
         for r in range(round_number, -1, -1):
-            save_path = join(self.client_folder, target, f'{round_number}.pt')
+            save_path = join(self.client_folder, target, f'{r}.pt')
             if os.path.exists(save_path):
                 return True
         return False
