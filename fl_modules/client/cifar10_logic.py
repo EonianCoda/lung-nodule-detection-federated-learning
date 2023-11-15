@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 PRINT_EVERY = 1000
 
 LAMBDA_S = 1 # supervised learning loss ratio
-LAMBDA_I = 1 # inter-client consistency
+LAMBDA_I = 1e-1 # inter-client consistency
 LAMBDA_U = 1 # unsupervised learning loss ratio
 
 class AverageMeter(object):
@@ -98,7 +98,7 @@ def train_fedmatch(model: nn.Module,
         pseudo_label = torch.softmax(logits_u_w.detach(), dim=-1)
         max_probs_u, targets_u = torch.max(pseudo_label, dim=-1)
         mask = (max_probs_u >= unsupervised_conf_thrs).float()
-        if num_helper_agents > 0:
+        if num_helper_agents > 0 and torch.sum(mask) > 0:
             loss_u = 0
             loss_icc = 0
             x_u_w = x[x_s.shape[0]:x_s.shape[0] + x_u_w.shape[0]][mask == 1]
@@ -107,7 +107,7 @@ def train_fedmatch(model: nn.Module,
                 logits_helper = [helper_agent_model(x_u_w) for helper_agent_model in helper_agent_models]
                 
             for logits in logits_helper:
-                loss_icc = loss_icc + F.kl_div(F.log_softmax(logits_u_w, dim=-1), F.softmax(logits, dim=-1), reduction='batchmean') * LAMBDA_I
+                loss_icc = loss_icc + F.kl_div(F.log_softmax(logits_u_w, dim=-1), F.softmax(logits, dim=-1), reduction='batchmean') * LAMBDA_I / num_helper_agents
                 
             # Agreement-based Pseudo Labeling
             with torch.no_grad():
@@ -116,12 +116,16 @@ def train_fedmatch(model: nn.Module,
                 targets_u = pseudo_label + pseudo_labels
                 targets_u = torch.argmax(targets_u, dim=-1)
 
-            loss_u = F.cross_entropy(logits_u_s[mask == 1], targets_u, reduction='mean') * LAMBDA_U + loss_icc
-        else:
+            loss_u = F.cross_entropy(logits_u_s[mask == 1], targets_u, reduction='mean') * LAMBDA_U
+            loss_final = loss_final + loss_u + loss_icc
+        elif torch.sum(mask) > 0:
             loss_u = F.cross_entropy(logits_u_s, targets_u, reduction='none') * mask
             loss_u = loss_u.mean() * LAMBDA_U
-        loss_final = loss_final + loss_u
-        
+            loss_final = loss_final + loss_u
+        else:
+            loss_u = torch.tensor(0.0)
+            if num_helper_agents > 0:
+                loss_icc = torch.tensor(0.0)
         # Backward
         loss_final.backward()
         optimizer.step()
