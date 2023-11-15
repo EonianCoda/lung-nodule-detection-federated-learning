@@ -5,12 +5,16 @@ common:
   save_local_state: False
   is_same_val_set: True
   val_local: False
-  clients_fraction: 0.05
+  clients_fraction: 0.5
 
 server:
-  total_rounds: 500
+  total_rounds: 100
   best_model_metric_name: accuracy
   
+  helper_agents:
+    num_helper_agents: 2
+    update_helper_agents_every_n_rounds: 3
+
   model: 
     template: fl_modules.model.resnet9.ResNet9
     params:
@@ -31,20 +35,19 @@ server:
       num_cycles: 0.4375 # 7 / 16
 
   optimizer: 
-    template: fl_modules.optimizer.fedprox.FedProx
+    template: torch.optim.SGD
     params:
       lr: 0.003
       momentum: 0.9
       weight_decay: 0.0005
       nesterov: True
-      mu: 0.01
 
   actions:
     train:
-      template: fl_modules.client.cifar10_logic.train_fixmatch
+      template: fl_modules.client.cifar10_logic.train_fedmatch
       params:
         unsupervised_conf_thrs: 0.95
-        num_steps: 300
+        num_steps: 50
     val:
       template: fl_modules.client.cifar10_logic.validation
       params: ~

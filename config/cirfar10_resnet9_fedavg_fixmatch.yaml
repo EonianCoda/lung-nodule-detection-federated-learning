@@ -8,7 +8,7 @@ common:
   clients_fraction: 0.05
 
 server:
-  total_rounds: 300
+  total_rounds: 500
   best_model_metric_name: accuracy
   
   model: 

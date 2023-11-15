@@ -49,7 +49,7 @@ class Client:
         setattr(self, f'{action_name}_config', action_config)
         setattr(self, f'{action_name}_fn', action_fn)
         
-    def train(self, round_number: int, model, optimizer, ema, scheduler):
+    def train(self, round_number: int, model, optimizer, ema, scheduler, **kwargs):
         logger.info(f"Client '{self.name}' starts training!")
         # Lazy initialize dataset
         if self.train_config.get('dataloader_s', None) == None:
@@ -77,6 +77,8 @@ class Client:
         self.train_config['optimizer'] = optimizer
         self.train_config['ema'] = ema
         self.train_config['scheduler'] = scheduler
+        for key, value in kwargs.items():
+            self.train_config[key] = value
         train_metrics = self.train_fn(**self.train_config)
         
         self.save_metrics(train_metrics, 'train', round_number)
@@ -144,6 +146,13 @@ class Client:
                 instance.load_state_dict(state_dict)
                 return
         raise ValueError(f'No state dict found for {target}!')    
+    
+    def has_state_dict(self, target: str, round_number: int):
+        for r in range(round_number, -1, -1):
+            save_path = join(self.client_folder, target, f'{round_number}.pt')
+            if os.path.exists(save_path):
+                return True
+        return False
             
     def save_metrics(self, metrics: Dict[str, float], task: str, round_number: int):
         """Save metrics to json file

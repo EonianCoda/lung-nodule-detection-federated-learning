@@ -31,6 +31,17 @@ class Server:
         self.is_same_val_set = self.config['common']['is_same_val_set']
         self.val_local = self.config['common']['val_local']
         self.clients_fraction = self.config['common']['clients_fraction']
+        
+        # Helper agents Options
+        if 'helper_agents' in self.server_config:
+            self.num_helper_agents = self.server_config['helper_agents']['num_helper_agents']
+            self.update_helper_agents_every_n_rounds = self.server_config['helper_agents']['update_helper_agents_every_n_rounds']
+            self.init_helper_agents()
+            logger.info(f"Use {self.num_helper_agents} helper agents")
+        else:
+            self.num_helper_agents = 0
+            self.update_helper_agents_every_n_rounds = 0
+        
         # Resume Options
         self.resume = resume
         self.pretrained_model_path = pretrained_model_path
@@ -39,11 +50,22 @@ class Server:
         self.exp_folder = exp_folder
         self.server_folder = join(self.exp_folder, 'server')
         self.working_folder = join(self.server_folder, 'working')
+        if self.num_helper_agents > 0:
+            self.helper_agents_folder = join(self.working_folder, 'helper_agents')
+            os.makedirs(self.helper_agents_folder, exist_ok = True)
         os.makedirs(self.server_folder, exist_ok = True)
         os.makedirs(self.working_folder, exist_ok = True)
         
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
+    
+    def init_helper_agents(self):
+        if self.num_helper_agents > 0:
+            from scipy.stats import truncnorm
+            import numpy as np
+            mu, std, lower, upper = 125,125,0,255
+            self.rgauss = (truncnorm((lower - mu) / std, (upper - mu) / std, loc=mu, scale=std).rvs((1,32,32,3))).astype(np.float32)/255
+            self.cid_to_vectors = {}
+    
     def start(self):
         self._init_training()
         total_rounds = self.config['server']['total_rounds']
@@ -94,6 +116,7 @@ class Server:
         client_val_local_metrics = dict()
         client_val_global_metrics = dict()
         
+        self.update_helper_agents(round_number)
         self.select_clients(round_number)
         for client_name in self.selected_client_names:
             client = self._clients[client_name]
@@ -101,12 +124,23 @@ class Server:
             # For Fedrox or FedProxAdam, we need to update global weights before training
             if hasattr(self.optimizer, 'update_global_weights'):
                 self.optimizer.update_global_weights()
+                
             # Training
+            if self.num_helper_agents > 0:
+                helper_agent_names = self.get_helper_agents(client_name)
+                if len(helper_agent_names) > 0:
+                    self.load_helper_agents_state(helper_agent_names)
+                    kwargs = dict(helper_agent_models = self.helper_agents_models[:len(helper_agent_names)])
+                else:
+                    kwargs = dict()
+            else:
+                kwargs = dict()
             train_metrics = client.train(round_number, 
-                                         model = self.model, 
-                                         optimizer = self.optimizer, 
-                                         scheduler = self.scheduler,
-                                         ema = self.ema)
+                                        model = self.model, 
+                                        optimizer = self.optimizer, 
+                                        scheduler = self.scheduler,
+                                        ema = self.ema,
+                                        **kwargs)
             client_train_metrics[client_name] = train_metrics
             for metric_name, metric_value in train_metrics.items():
                 logger.info(f"Client '{client.name}' train metric '{metric_name}' = {metric_value:.4f}")
@@ -149,7 +183,8 @@ class Server:
                 client_val_global_metrics[client_name] = val_metrics
                 for metric_name, metric_value in val_metrics.items():
                     logger.info(f"Client '{client.name}' val metric '{metric_name}' = {metric_value:.4f}")
-        else:
+        else: # Use same validation set to validate, just use the first client
+            client = self._clients[self.selected_client_names[0]]
             val_metrics = client.val(round_number, model = self.model, is_global = True)
             for metric_name, metric_value in val_metrics.items():
                 logger.info(f"Client val metric '{metric_name}' = {metric_value:.4f}")
@@ -191,7 +226,7 @@ class Server:
             selected_client_names = list(self._clients.keys())
         else:
             num_of_clients = len(self._clients)
-            num_of_selected_clients = int(num_of_clients * self.clients_fraction)
+            num_of_selected_clients = max(int(num_of_clients * self.clients_fraction), 1)
             client_names = list(self._clients.keys())
             random.shuffle(client_names)
             selected_client_names = client_names[:num_of_selected_clients]
@@ -262,6 +297,11 @@ class Server:
         # Load ema state
         if self.apply_ema:
             self.ema.load_state_dict(torch.load(self.global_ema, map_location = self.device))
+      
+    def load_helper_agents_state(self, helper_agent_names: List[str]) -> None:
+        assert len(helper_agent_names) == len(self.helper_agents_models)
+        for i, helper_agent_name in enumerate(helper_agent_names):
+            self.helper_agents_models[i].load_state_dict(torch.load(join(self.helper_agents_folder, f'{helper_agent_name}.pt'), map_location = self.device))
         
     def save_global_state(self, save_path: str) -> None:
         """Save global state to file
@@ -365,9 +405,42 @@ class Server:
         lines[-1] = lines[-1].strip()
         with open(testing_save_path, 'w') as f:
             f.writelines(lines)
-        
+    
+    def update_helper_agents(self, round_number: int):
+        if self.num_helper_agents > 0 and (round_number + 1) % self.update_helper_agents_every_n_rounds == 0:
+            self.cid_to_vectors = {}
+            shutil.rmtree(self.helper_agents_folder)
+            
+            logger.info(f"Update helper agents at round {round_number}")
+            for client_name in self._clients.keys():
+                client = self._clients[client_name]
+                if not client.has_helper_agent():
+                    continue
+                client.load_state_dict(self.model, 'model', round_number, self.device)
+                self.model.eval()
+                with torch.no_grad():
+                    self.cid_to_vectors[client_name] = self.model(self.rgauss.to(self.device)).cpu().numpy()
+                torch.save(self.model.state_dict(), join(self.helper_agents_folder, f'{client_name}.pt'))
+            logger.info(f"There are {len(self.cid_to_vectors)} helper agents")
+            self.vid_to_cid = list(self.cid_to_vectors.keys())
+            self.vectors = list(self.cid_to_vectors.values())
+            from scipy import spatial
+            self.tree = spatial.KDTree(self.vectors)
+            
+    def get_helper_agents(self, client_name: str) -> List[str]:
+        if client_name in self.cid_to_vectors:
+            vec = self.cid_to_vectors[client_name]
+            _, indices = self.tree.query(vec, k = self.num_helper_agents + 1)
+            helper_agent_names = [self.vid_to_cid[i] for i in indices if self.vid_to_cid[i] != client_name]
+            logger.info(f"Get helper agents for client '{client_name}'")
+            logger.info(f"Helper agent names: {helper_agent_names}")
+            return helper_agent_names
+        else:
+            return []    
+    
     def _init_training(self):
         self._init_model()
+        self._init_helper_agents_model()
         self._init_optimizer()
         self._init_ema()
         self._init_scheduler()
@@ -396,6 +469,14 @@ class Server:
             # Save initial model
             torch.save(self.model.state_dict(), self.global_model)
         self.model.to(self.device)
+    
+    def _init_helper_agents_model(self):
+        if self.num_helper_agents > 0:
+            self.helper_agents_models = []
+            for i in range(self.num_helper_agents):
+                model = build_instance(self.server_config['model']['template'], self.server_config['model']['params'])
+                model.to(self.device)
+                self.helper_agents_models.append(model)
     
     def _init_optimizer(self):
         self.optimizer_aggregaion_strategy = self.server_config['aggregation']['optimizer_aggregate_strategy']
