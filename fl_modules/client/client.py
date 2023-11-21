@@ -180,4 +180,7 @@ class Client:
     
     @property
     def weight(self):
-        return len(self.train_config['dataloader_s']) + len(self.train_config['dataloader_u'])
+        if 'dataloader_u' in self.train_config:
+            return len(self.train_config['dataloader_s']) + len(self.train_config['dataloader_u'])
+        else:
+            return len(self.train_config['dataloader'])
