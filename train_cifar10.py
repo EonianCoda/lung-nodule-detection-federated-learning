@@ -84,7 +84,7 @@ if __name__ == '__main__':
         logger.info("Epoch {}/{}:".format(epoch + 1, end_epoch))
         # Train
         train_metrics = train_normal(model = model,
-                                       dataloader = train_dataloader,
+                                       dataloader_s = train_dataloader,
                                         optimizer = optimizer,
                                         scheduler=scheduler,
                                         ema = ema,

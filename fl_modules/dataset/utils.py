@@ -193,7 +193,7 @@ def prepare_semi_supervised_cifar10_datasets(train_val_test_split: List[float],
     print("There are {} train data, {} val data, and {} test data.".format(len(train_data['y']), len(val_data['y']), len(test_data['y'])))
     
     # Split train set into supervised and unsupervised set
-    num_datas = [num_labeled * num_clients, (len(x) - num_labeled * num_clients)]
+    num_datas = [num_labeled * num_clients, (len(train_data['x']) - num_labeled * num_clients)]
     data = split_data(train_data['x'], train_data['y'], num_datas, is_balanced=True, seed=seed)
     train_s, train_u = data[0], data[1]
     print("There are {} labeled data and {} unlabeled data for training.".format(len(train_s['y']), len(train_u['y'])))
@@ -209,3 +209,46 @@ def prepare_semi_supervised_cifar10_datasets(train_val_test_split: List[float],
     for (client_id, data_s), (_, data_u) in zip(client_train_s.items(), client_train_u.items()):
         print('Client {:2d} has {:5d} labeled data and {:5d} unlabeled data for class {}.'.format(client_id, len(data_s['y']), len(data_u['y']), np.unique(data_u['y'])))
     return client_train_s, client_train_u, val_data, test_data
+
+def prepare_semi_supervised_label_at_server_cifar10_datasets(train_val_test_split: List[float],
+                                                            num_labeled: int,
+                                                            num_clients: int = 10,
+                                                            is_balanced: bool = True,
+                                                            seed: int = 0) -> Tuple[Dict[int, Dict[str, np.ndarray]], Dict[int, Dict[str, np.ndarray]], Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+    """
+    Returns:
+        A tuple of (client_train_s, client_train_u, val_set, test_set)
+        client_train_s:
+            A dictionary of client's train set. The key is the client id and the value is a dictionary of x and y.
+        client_train_u:
+            A dictionary of client's train set. The key is the client id and the value is a dictionary of x and y.
+        val_set:
+            A dictionary of validation set. The key is 'x' and 'y'.
+        test_set:
+            A dictionary of test set. The key is 'x' and 'y'.
+    """
+    x, y = load_cifar10()
+    # Split train/val/test set uniformly
+    num_datas = []
+    for ratio in train_val_test_split:
+        num_datas.append(int(len(x) * ratio))
+    num_datas[-1] = len(x) - sum(num_datas[:-1])
+    
+    data = split_data(x, y, num_datas, is_balanced=True, seed=seed)
+    train_data, val_data, test_data = data[0], data[1], data[2]
+    print("There are {} train data, {} val data, and {} test data.".format(len(train_data['y']), len(val_data['y']), len(test_data['y'])))
+    
+    # Split train set into supervised and unsupervised set
+    num_datas = [num_labeled, (len(train_data['x']) - num_labeled)]
+    data = split_data(train_data['x'], train_data['y'], num_datas, is_balanced=True, seed=seed)
+    server_train_s, train_u = data[0], data[1]
+    print("There are {} labeled data and {} unlabeled data for training.".format(len(server_train_s['y']), len(train_u['y'])))
+    # Split train set into clients
+    # Unsupervised set
+    num_datas = [(len(train_u['x']) // num_clients)] * num_clients
+    num_datas[-1] = len(train_u['x']) - sum(num_datas[:-1])
+    client_train_u = split_data(train_u['x'], train_u['y'], num_datas, is_balanced=is_balanced, seed=seed)
+    
+    for client_id, data_u in client_train_u.items():
+        print('Client {:2d} has {:5d} unlabeled data for class {}.'.format(client_id, len(data_u['y']), np.unique(data_u['y'])))
+    return server_train_s, client_train_u, val_data, test_data

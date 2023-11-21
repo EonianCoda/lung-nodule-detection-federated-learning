@@ -39,6 +39,7 @@ class FedProx(Optimizer):
         if nesterov and (momentum <= 0 or dampening != 0):
             raise ValueError('Nesterov momentum requires a momentum and zero dampening')
 
+        self.use_w_old = True
         super(FedProx, self).__init__(params, defaults)
 
     def __setstate__(self, state):
@@ -65,29 +66,55 @@ class FedProx(Optimizer):
             dampening = group['dampening']
             nesterov = group['nesterov']
             mu = group['mu']
-            w_old = group['w_old']
-            for p, w_old_p in zip(group['params'], w_old):
-                if p.grad is None:
-                    continue
-                d_p = p.grad
-                if weight_decay != 0:
-                    d_p = d_p.add(p, alpha=weight_decay)
-                if momentum != 0:
-                    param_state = self.state[p]
-                    if 'momentum_buffer' not in param_state:
-                        buf = param_state['momentum_buffer'] = torch.clone(d_p).detach()
-                    else:
-                        buf = param_state['momentum_buffer']
-                        buf.mul_(momentum).add_(d_p, alpha=1 - dampening)
-                    if nesterov:
-                        d_p = d_p.add(buf, alpha=momentum)
-                    else:
-                        d_p = buf
-                if w_old is not None:
-                    d_p.add_(p - w_old_p, alpha=mu)
-                p.add_(d_p, alpha=-group['lr'])
-
+            
+            if self.use_w_old:
+                w_old = group['w_old']
+                for p, w_old_p in zip(group['params'], w_old):
+                    if p.grad is None:
+                        continue
+                    d_p = p.grad
+                    if weight_decay != 0:
+                        d_p = d_p.add(p, alpha=weight_decay)
+                    if momentum != 0:
+                        param_state = self.state[p]
+                        if 'momentum_buffer' not in param_state:
+                            buf = param_state['momentum_buffer'] = torch.clone(d_p).detach()
+                        else:
+                            buf = param_state['momentum_buffer']
+                            buf.mul_(momentum).add_(d_p, alpha=1 - dampening)
+                        if nesterov:
+                            d_p = d_p.add(buf, alpha=momentum)
+                        else:
+                            d_p = buf
+                    if w_old is not None:
+                        d_p.add_(p - w_old_p, alpha=mu)
+                    p.add_(d_p, alpha=-group['lr'])
+            else:
+                for p in group['params']:
+                    if p.grad is None:
+                        continue
+                    d_p = p.grad
+                    if weight_decay != 0:
+                        d_p = d_p.add(p, alpha=weight_decay)
+                    if momentum != 0:
+                        param_state = self.state[p]
+                        if 'momentum_buffer' not in param_state:
+                            buf = param_state['momentum_buffer'] = torch.clone(d_p).detach()
+                        else:
+                            buf = param_state['momentum_buffer']
+                            buf.mul_(momentum).add_(d_p, alpha=1 - dampening)
+                        if nesterov:
+                            d_p = d_p.add(buf, alpha=momentum)
+                        else:
+                            d_p = buf
+                    p.add_(d_p, alpha=-group['lr'])
         return loss
+
+    def enable_w_old(self):
+        self.use_w_old = True
+    
+    def disable_w_old(self):
+        self.use_w_old = False
 
     def update_global_weights(self):
         for param_group in self.param_groups:
@@ -114,6 +141,7 @@ class FedProxAdam(Optimizer):
             raise ValueError(f'Invalid mu value: {mu}')
         defaults = {'lr': lr, 'betas': betas, 'eps': eps,
                     'weight_decay': weight_decay, 'amsgrad': amsgrad, 'mu': mu}
+        self.use_w_old = True
         super(FedProxAdam, self).__init__(params, defaults)
 
     def __setstate__(self, state):
@@ -126,6 +154,12 @@ class FedProxAdam(Optimizer):
         for param_group in self.param_groups:
             copy_params = [p.clone().detach() for p in param_group['params'] if p.requires_grad]
             param_group['w_old'] = copy_params
+
+    def enable_w_old(self):
+        self.use_w_old = True
+        
+    def disable_w_old(self):
+        self.use_w_old = False
 
     @torch.no_grad()
     def step(self, closure=None):

@@ -274,8 +274,85 @@ def train_fixmatch(model: nn.Module,
             logger.info("Train metric '{}' = {:.4f}".format(metric, value))
     return train_metrics
 
+def train_fixmatch_only_unsupervised(model: nn.Module, 
+                                    dataloader_u: DataLoader,
+                                    optimizer: torch.optim.Optimizer,
+                                    num_steps: int,
+                                    device: torch.device,
+                                    scheduler: torch.optim.lr_scheduler._LRScheduler = None,
+                                    unsupervised_conf_thrs: float = 0.95,
+                                    ema: EMA = None,
+                                    enable_progress_bar = False,
+                                    log_metric = False) -> Dict[str, float]:
+    model.train()
+    optimizer.zero_grad()
+    
+    progress_bar = get_progress_bar('Train', num_steps, 0, 1) if enable_progress_bar else None
+
+    losses_u = AverageMeter()
+    losses = AverageMeter()
+    
+    iter_dataloader_u = iter(dataloader_u)
+    
+    for step in range(num_steps):
+        try:
+            (x_u_w, x_u_s), _  = next(iter_dataloader_u)
+        except StopIteration:
+            iter_dataloader_u = iter(dataloader_u)
+            (x_u_w, x_u_s), _ = next(iter_dataloader_u)
+        
+        x = torch.cat((x_u_w, x_u_s), dim=0).to(device)
+        
+        # Predict
+        logits = model(x)
+        logits_u_w, logits_u_s = logits.chunk(2)
+        del logits
+        # Calculate unsupervised loss
+        pseudo_label = torch.softmax(logits_u_w.detach(), dim=-1)
+        max_probs_u, targets_u = torch.max(pseudo_label, dim=-1)
+        mask = (max_probs_u >= unsupervised_conf_thrs).float()
+        loss_u = F.cross_entropy(logits_u_s, targets_u, reduction='none') * mask
+        loss_u = loss_u.mean() * LAMBDA_U
+        loss_final = loss_u
+        
+        # Backward
+        if loss_final != 0:
+            loss_final.backward()
+            optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
+        
+        # Update scheduler
+        if scheduler is not None:
+            scheduler.step()
+            
+        # Update EMA
+        if ema is not None:
+            ema.update()
+        
+        # Log loss and metrics
+        losses_u.update(loss_u.item())
+        losses.update(loss_final.item())
+        
+        post_fix = {'loss': losses.avg,
+                    'loss_u': losses_u.avg}
+        if scheduler is not None:
+            post_fix['lr'] = scheduler.get_last_lr()[0]
+        if progress_bar is not None:
+            progress_bar.set_postfix(**post_fix)
+            progress_bar.update()
+    if progress_bar is not None:
+        progress_bar.close()
+                
+    train_metrics = {'loss': losses.avg,
+                    'loss_u': losses_u.avg}
+    
+    if log_metric:
+        for metric, value in train_metrics.items():
+            logger.info("Train metric '{}' = {:.4f}".format(metric, value))
+    return train_metrics
+
 def train_normal(model: nn.Module, 
-                dataloader: DataLoader,
+                dataloader_s: DataLoader,
                 optimizer: torch.optim.Optimizer,
                 device: torch.device,
                 num_steps: int,
@@ -287,17 +364,17 @@ def train_normal(model: nn.Module,
     model.train()
     optimizer.zero_grad()
     
-    progress_bar = get_progress_bar('Train', len(dataloader), 0, 1) if enable_progress_bar else None
+    progress_bar = get_progress_bar('Train', len(dataloader_s), 0, 1) if enable_progress_bar else None
     losses = AverageMeter()
     accs = AverageMeter()
     
-    iter_dataloader = iter(dataloader)
+    iter_dataloader_s = iter(dataloader_s)
     for step in range(num_steps):
         try:
-            x, targets = next(iter_dataloader)
+            x, targets = next(iter_dataloader_s)
         except StopIteration:
-            iter_dataloader = iter(dataloader)
-            x, targets = next(iter_dataloader)
+            iter_dataloader_s = iter(dataloader_s)
+            x, targets = next(iter_dataloader_s)
         x, targets = x.to(device), targets.long().to(device)
         
         # Calculate supervised loss

@@ -1,0 +1,79 @@
+common:
+  seed: 1029
+  enable_progress_bar: True
+  save_dir: './save'
+  save_local_state: False
+  is_same_val_set: True
+  val_local: False
+  clients_fraction: 0.05
+
+server:
+  total_rounds: 500
+  best_model_metric_name: accuracy
+  
+  label_at_server:
+    actions:
+      train:
+        template: fl_modules.client.cifar10_logic.train_normal
+        params:
+          num_steps: 300
+
+    dataset:
+      params:
+        batch_size: 64
+        iters: 300
+        data: ./data/fl_data/server_train_s.pkl
+        targets:
+        - strong
+      template: fl_modules.dataset.cifar10_dataset.Cifar10Dataset
+
+  model: 
+    template: fl_modules.model.resnet9.ResNet9
+    params:
+      num_classes: 10
+      in_channels: 3
+
+  ema:
+    apply: False
+    params:
+      decay: 0.99
+
+  scheduler:
+    apply: False
+    template: fl_modules.scheduler.cosine_scheduler.get_cosine_schedule_with_warmup
+    params:
+      num_warmup_steps: 0
+      num_training_steps: ~
+      num_cycles: 0.4375 # 7 / 16
+
+  optimizer: 
+    template: fl_modules.optimizer.fedprox.FedProx
+    params:
+      lr: 0.003
+      momentum: 0.9
+      weight_decay: 0.0005
+      nesterov: True
+      mu: 0.01
+
+  actions:
+    train:
+      template: fl_modules.client.cifar10_logic.train_fixmatch_only_unsupervised
+      params:
+        unsupervised_conf_thrs: 0.95
+        num_steps: 300
+    val:
+      template: fl_modules.client.cifar10_logic.validation
+      params: ~
+    test:
+      template: fl_modules.client.cifar10_logic.test
+      params: ~
+
+  aggregation:
+    optimizer_aggregate_strategy: continue_global # continue_global, continue_local, reset
+    template:
+      fl_modules.server.aggregation.fedavg.FedAvg
+    params:
+      model:
+        keep_local_state: []
+      optimizer:
+        keep_local_state: [] # If strategy is not continue_global, this field is ignored.

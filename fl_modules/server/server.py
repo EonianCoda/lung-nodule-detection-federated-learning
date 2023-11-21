@@ -57,7 +57,7 @@ class Server:
         os.makedirs(self.working_folder, exist_ok = True)
         
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
+
     def init_helper_agents(self):
         if self.num_helper_agents > 0:
             from scipy.stats import truncnorm
@@ -117,6 +117,7 @@ class Server:
         client_val_local_metrics = dict()
         client_val_global_metrics = dict()
         
+        self.train_at_server()
         self.update_helper_agents(round_number)
         self.select_clients(round_number)
         for client_name in self.selected_client_names:
@@ -217,6 +218,31 @@ class Server:
             
             self.save_global_state(join(self.exp_folder, 'best_model.pth'))
     
+    def train_at_server(self):
+        if not self.label_at_server:
+            return
+        logger.info("Start training at server")
+        
+        self.model.load_state_dict(torch.load(self.global_model, map_location = self.device))
+        self.optimizer.load_state_dict(torch.load(self.train_at_server_optimizer, map_location = self.device))
+        
+        self.train_fn_config['model'] = self.model
+        self.train_fn_config['optimizer'] = self.optimizer
+        self.train_fn_config['ema'] = None
+        self.train_fn_config['scheduler'] = None
+        
+        if hasattr(self.optimizer, 'disable_w_old'):
+            self.optimizer.disable_w_old()
+        train_metrics = self.train_fn(**self.train_fn_config)
+        if hasattr(self.optimizer, 'enable_w_old'):
+            self.optimizer.enable_w_old()
+        
+        # Save model and optimizer
+        torch.save(self.model.state_dict(), self.global_model)
+        torch.save(self.optimizer.state_dict(), self.train_at_server_optimizer)
+            
+        return train_metrics
+    
     def select_clients(self, round_number: int):
         """Select clients for current round
         Args:
@@ -266,7 +292,7 @@ class Server:
                         aggregated_optimizer_state_dict[param_key][custom_state_key] = custom[custom_state_key]
                 optimizer_state_dict['state'] = aggregated_optimizer_state_dict
                 torch.save(optimizer_state_dict, join(self.working_folder, f'{client_name}_optimizer.pt'))
-            
+    
     def load_working_state(self, round_number: int, client: Client) -> None:
         """Load working state from file
         
@@ -440,6 +466,8 @@ class Server:
             return []    
     
     def _init_training(self):
+        self._init_label_at_server()
+        
         self._init_model()
         self._init_helper_agents_model()
         self._init_optimizer()
@@ -491,7 +519,11 @@ class Server:
                 torch.save(self.optimizer.state_dict(), self.global_optimizer) # Save initial optimizer
         else:
             self.global_optimizer = None
-    
+        
+        # Save initial optimizer for labet-at-server        
+        if self.label_at_server and (not self.resume or (self.resume and not os.path.exists(self.train_at_server_optimizer))):
+            torch.save(self.optimizer.state_dict(), self.train_at_server_optimizer)
+            
     def build_optimizer(self, model):
         optimizer_template = build_class(self.server_config['optimizer']['template'])
         params = copy.deepcopy(self.server_config['optimizer']['params'])
@@ -518,7 +550,7 @@ class Server:
                 torch.save(self.ema.state_dict(), self.global_ema)
         else:
             self.ema = None
-    
+            
     def _init_scheduler(self):
         self.apply_scheduler = self.server_config['scheduler']['apply']
         if self.apply_scheduler:
@@ -604,6 +636,37 @@ class Server:
                     self.best_model_metric_name = best_model_metric_name
                 self.best_model_metric = best_model_metric
                 self.best_model_round = best_model_round
+    
+    def _init_label_at_server(self):
+        # Label at server Options
+        if 'label_at_server' in self.server_config:
+            from torch.utils.data import DataLoader
+            self.label_at_server = True
+            
+            # Prepare action config
+            train_fn = build_class(self.server_config['label_at_server']['actions']['train']['template'])
+            train_fn_params = self.server_config['label_at_server']['actions']['train']['params']
+            action_config = copy.deepcopy(train_fn_params) if train_fn_params != None else dict()
+            action_config['device'] = self.device
+            action_config['enable_progress_bar'] = self.enable_progress_bar
+            
+            self.train_fn = train_fn
+            self.train_fn_config = action_config
+            
+            # Prepare training dataloader
+            train_s_dataset = build_instance(self.server_config['label_at_server']['dataset']['template'], self.server_config['label_at_server']['dataset']['params'])
+            train_s_dataloder = DataLoader(train_s_dataset,
+                                            batch_size=train_s_dataset.batch_size,
+                                            shuffle = True,
+                                            num_workers = max(os.cpu_count() // 4, 2),
+                                            pin_memory = True,
+                                            drop_last = True)
+            
+            self.train_fn_config['dataloader_s'] = train_s_dataloder
+            
+            self.train_at_server_optimizer = join(self.working_folder, 'train_at_server_optimizer.pt')
+        else:
+            self.label_at_server = False 
     
     @property
     def client_weights(self) -> Dict[str, float]:
