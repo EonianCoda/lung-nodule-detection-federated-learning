@@ -2,7 +2,7 @@ import argparse
 import os
 from os.path import join
 import shutil
-from fl_modules.dataset.utils import prepare_cifar10_datasets, save_pickle
+from fl_modules.dataset.utils import prepare_semi_supervised_cifar10_datasets, save_pickle
 from fl_modules.utilities.utils import write_yaml
 
 def get_parser():
@@ -33,7 +33,7 @@ if __name__ == '__main__':
         shutil.rmtree(save_dir)
     os.makedirs(save_dir, exist_ok=True)
     
-    client_train_s, client_train_u, val_set, test_set = prepare_cifar10_datasets(train_val_test_split=train_val_test_split,
+    client_train_s, client_train_u, val_set, test_set = prepare_semi_supervised_cifar10_datasets(train_val_test_split=train_val_test_split,
                                                                                     num_labeled = args.num_labeled,
                                                                                     num_clients = num_clients,
                                                                                     is_balanced=not is_unbalance,

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 PRINT_EVERY = 1000
 
 LAMBDA_S = 1 # supervised learning loss ratio
-LAMBDA_I = 1e-1 # inter-client consistency
+LAMBDA_I = 1e-2 # inter-client consistency
 LAMBDA_U = 1 # unsupervised learning loss ratio
 
 class AverageMeter(object):
@@ -278,6 +278,7 @@ def train_normal(model: nn.Module,
                 dataloader: DataLoader,
                 optimizer: torch.optim.Optimizer,
                 device: torch.device,
+                num_steps: int,
                 scheduler: torch.optim.lr_scheduler._LRScheduler = None,
                 ema: EMA = None,
                 enable_progress_bar = False,
@@ -289,12 +290,19 @@ def train_normal(model: nn.Module,
     progress_bar = get_progress_bar('Train', len(dataloader), 0, 1) if enable_progress_bar else None
     losses = AverageMeter()
     accs = AverageMeter()
-    for step, (x, target) in enumerate(dataloader):
-        x, target = x.to(device), target.long().to(device)
+    
+    iter_dataloader = iter(dataloader)
+    for step in range(num_steps):
+        try:
+            x, targets = next(iter_dataloader)
+        except StopIteration:
+            iter_dataloader = iter(dataloader)
+            x, targets = next(iter_dataloader)
+        x, targets = x.to(device), targets.long().to(device)
         
         # Calculate supervised loss
         logits = model(x)
-        loss = F.cross_entropy(logits, target, reduction='mean')
+        loss = F.cross_entropy(logits, targets, reduction='mean')
         
         loss.backward()
         optimizer.step()
@@ -307,7 +315,7 @@ def train_normal(model: nn.Module,
         
         # Log loss and metrics
         losses.update(loss.item())
-        acc = torch.sum(torch.argmax(logits, dim=1) == target).item() / x.shape[0]
+        acc = torch.sum(torch.argmax(logits, dim=1) == targets).item() / x.shape[0]
         accs.update(acc)
         
         post_fix = {'loss': losses.avg,

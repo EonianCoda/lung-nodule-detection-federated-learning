@@ -11,10 +11,6 @@ server:
   total_rounds: 500
   best_model_metric_name: accuracy
   
-  helper_agents:
-    num_helper_agents: 2
-    update_helper_agents_every_n_rounds: 5
-
   model: 
     template: fl_modules.model.resnet9.ResNet9
     params:
@@ -35,7 +31,7 @@ server:
       num_cycles: 0.4375 # 7 / 16
 
   optimizer: 
-    template: torch.optim.SGD
+    template: fl_modules.optimizer.fedprox.FedProx
     params:
       lr: 0.003
       momentum: 0.9
@@ -44,10 +40,9 @@ server:
 
   actions:
     train:
-      template: fl_modules.client.cifar10_logic.train_fedmatch
+      template: fl_modules.client.cifar10_logic.train_normal
       params:
-        unsupervised_conf_thrs: 0.95
-        num_steps: 200
+        num_steps: 300
     val:
       template: fl_modules.client.cifar10_logic.validation
       params: ~

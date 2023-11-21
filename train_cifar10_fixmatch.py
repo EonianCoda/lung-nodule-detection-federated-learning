@@ -9,7 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from fl_modules.client.cifar10_logic import train_fixmatch, validation, test
 from fl_modules.dataset.cifar10_dataset import Cifar10Dataset
-from fl_modules.dataset.utils import prepare_cifar10_datasets
+from fl_modules.dataset.utils import prepare_semi_supervised_cifar10_datasets
 
 from train import build_train, save_states, write_metrics
 from fl_modules.utilities import setup_logging, write_yaml
@@ -51,7 +51,7 @@ def build_dataset(args):
     seed = args.seed
     merge_supervised = args.merge_supervised
     # Get dataset
-    train_s_data, train_u_data, val_data, test_data = prepare_cifar10_datasets(train_val_test_split = [0.8, 0.1, 0.1], 
+    train_s_data, train_u_data, val_data, test_data = prepare_semi_supervised_cifar10_datasets(train_val_test_split = [0.8, 0.1, 0.1], 
                                                                    s_u_split=[supervised_ratio, 1.0 - supervised_ratio],
                                                                    seed=seed, 
                                                                    num_clients=1)

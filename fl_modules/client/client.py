@@ -54,8 +54,6 @@ class Client:
         # Lazy initialize dataset
         if self.train_config.get('dataloader_s', None) == None:
             train_s_dataset = build_instance(self.dataset_config['train_s']['template'], self.dataset_config['train_s']['params'])
-            train_u_dataset = build_instance(self.dataset_config['train_u']['template'], self.dataset_config['train_u']['params'])
-            logger.info(f"Client '{self.name}' has {len(train_s_dataset.x)} labeled data and {len(train_u_dataset.x)} unlabeled data")
             train_s_dataloder = DataLoader(train_s_dataset,
                                            batch_size=train_s_dataset.batch_size,
                                             shuffle = True,
@@ -63,15 +61,22 @@ class Client:
                                             pin_memory = True,
                                             # persistent_workers = True,
                                             drop_last = True)
-            train_u_dataloader = DataLoader(train_u_dataset,
-                                            batch_size=train_u_dataset.batch_size,
-                                            shuffle = True,
-                                            num_workers = self.num_workers,
-                                            pin_memory = True,
-                                            # persistent_workers = True,
-                                            drop_last = True)
-            self.train_config['dataloader_s'] = train_s_dataloder
-            self.train_config['dataloader_u'] = train_u_dataloader
+            # Add unlabeled data
+            if 'train_u' in self.dataset_config:
+                train_u_dataset = build_instance(self.dataset_config['train_u']['template'], self.dataset_config['train_u']['params'])
+                train_u_dataloader = DataLoader(train_u_dataset,
+                                                batch_size=train_u_dataset.batch_size,
+                                                shuffle = True,
+                                                num_workers = self.num_workers,
+                                                pin_memory = True,
+                                                # persistent_workers = True,
+                                                drop_last = True)
+                self.train_config['dataloader_u'] = train_u_dataloader
+                self.train_config['dataloader_s'] = train_s_dataloder
+                logger.info(f"Client '{self.name}' has {len(train_s_dataset.x)} labeled data and {len(train_u_dataset.x)} unlabeled data")
+            else:
+                self.train_config['dataloader'] = train_s_dataloder
+                logger.info(f"Client '{self.name}' has {len(train_s_dataset.x)} labeled data")
             
         self.train_config['model'] = model
         self.train_config['optimizer'] = optimizer

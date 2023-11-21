@@ -131,11 +131,44 @@ def split_data(x: List[Image.Image],
             splited_dataset[client_id]['y'] = np.array(y_unlabeled, dtype=np.int32)
     return splited_dataset
 
-def prepare_cifar10_datasets(train_val_test_split: List[float],
-                            num_labeled: int,
-                            num_clients: int = 10,
-                            is_balanced: bool = True,
-                            seed: int = 0) -> Tuple[Dict[int, Dict[str, np.ndarray]], Dict[int, Dict[str, np.ndarray]], Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+def prepare_supervised_cifar10_datasets(train_val_test_split: List[float],
+                                        num_clients: int = 10,
+                                        is_balanced: bool = True,
+                                        seed: int = 0) -> Tuple[Dict[int, Dict[str, np.ndarray]], Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+    """
+    Returns:
+        A tuple of (client_train_data, val_set, test_set)
+        client_train_data:
+            A dictionary of client's train set. The key is the client id and the value is a dictionary of x and y.
+        val_set:
+            A dictionary of validation set. The key is 'x' and 'y'.
+        test_set:
+            A dictionary of test set. The key is 'x' and 'y'.
+    """
+    x, y = load_cifar10()
+    # Split train/val/test set uniformly
+    num_datas = []
+    for ratio in train_val_test_split:
+        num_datas.append(int(len(x) * ratio))
+    num_datas[-1] = len(x) - sum(num_datas[:-1])
+    
+    data = split_data(x, y, num_datas, is_balanced=True, seed=seed)
+    train_data, val_data, test_data = data[0], data[1], data[2]
+    print("There are {} train data, {} val data, and {} test data.".format(len(train_data['y']), len(val_data['y']), len(test_data['y'])))
+    
+    # Split train set into supervised and unsupervised set
+    num_datas = [len(train_data['x']) // num_clients] * num_clients
+    num_datas[-1] = len(train_data['x']) - sum(num_datas[:-1])
+    client_train_data = split_data(train_data['x'], train_data['y'], num_datas, is_balanced=is_balanced, seed=seed)
+    for client_id, data in client_train_data.items():
+        print('Client {:2d} has {:5d} labeled data for class {}.'.format(client_id, len(data['y']), np.unique(data['y'])))
+    return client_train_data, val_data, test_data
+
+def prepare_semi_supervised_cifar10_datasets(train_val_test_split: List[float],
+                                            num_labeled: int,
+                                            num_clients: int = 10,
+                                            is_balanced: bool = True,
+                                            seed: int = 0) -> Tuple[Dict[int, Dict[str, np.ndarray]], Dict[int, Dict[str, np.ndarray]], Dict[str, np.ndarray], Dict[str, np.ndarray]]:
     """
     Returns:
         A tuple of (client_train_s, client_train_u, val_set, test_set)
