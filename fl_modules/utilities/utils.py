@@ -84,6 +84,13 @@ def get_progress_bar(identifer: str,
                         bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
     return progress_bar
 
+def get_progress_bar_steps(identifer: str, 
+                            total_steps: int):
+    progress_bar = tqdm(total = total_steps, 
+                        desc = "{:10s}".format(identifer), 
+                        bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
+    return progress_bar
+
 def init_seed(seed: int):
     import torch
     import numpy as np

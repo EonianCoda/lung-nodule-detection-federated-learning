@@ -16,8 +16,6 @@ class RandomFlipYXZ:
             for i in range(len(images)):
                 images[i] = np.flip(images[i], axis = flip_axes)
         return images
-    
-
 def random_color(image, p: float = 0.3, intensity: float = 1.0):
     image = A.RandomBrightnessContrast(brightness_limit = 0.1 * intensity, 
                                        contrast_limit = 0.1 * intensity,

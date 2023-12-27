@@ -10,6 +10,7 @@
 - add `/tools/create_dataset.py` for creating structured dataset
 - add `/tools/convert_series_list_cross_device.py` for converting series list cross device
 - add `prepare_lobe.py` for generating lobe mask
+- add semi supervised learning(ssl) training
 ### Changed
 - add `cupy-cuda12x` into `requeriments.txt` for generating lobe
 - add ``

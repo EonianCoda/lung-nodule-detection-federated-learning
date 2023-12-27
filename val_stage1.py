@@ -70,7 +70,7 @@ if __name__ == '__main__':
     
     if model_path == 'auto':
         model_folder = get_newer_folder('./save')
-        model_path = os.path.join(model_folder, 'best_model.pth')
+        model_path = os.path.join(model_folder, 'best.pth')
     
     logger.info('Loading model from {}'.format(model_path))
     checkpoint = torch.load(model_path)
