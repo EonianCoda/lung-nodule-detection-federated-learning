@@ -15,4 +15,5 @@ data
 *.ipynb
 *.xml
 
+save
 __pycache__
