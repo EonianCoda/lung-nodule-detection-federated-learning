@@ -5,11 +5,6 @@ import numpy.typing as npt
 from collections import defaultdict
 from typing import Tuple, Union, List, Optional
 
-import torch
-import torch.nn as nn
-
-from fl_modules.model.stage1.stage1_model import Stage1Model
-
 HU_MIN, HU_MAX = -1000, 400
 
 def compute_recall(tp, fn) -> float:
@@ -31,7 +26,7 @@ def normalize_paths(paths: Tuple[str, List[str], None]):
         paths = [paths]
     return paths
 
-def load_model(stage: int, model: Union[nn.Module, str], device: torch.device) -> nn.Module:
+def load_model(stage: int, model , device):
     """
     Args:
         stage: int
@@ -42,6 +37,9 @@ def load_model(stage: int, model: Union[nn.Module, str], device: torch.device) -
             The device of model, e.g. cpu or cuda.
     Return: nn.Module
     """
+    import torch
+    import torch.nn as nn
+    from fl_modules.model.stage1.stage1_model import Stage1Model
     if isinstance(model, str):
         load_dict = torch.load(model)
         if model.endswith('.pth'):

@@ -1,4 +1,4 @@
-root: './data'
+root: './data/lung_nodule'
 database:
   dicom: 'dicom.db'
   fl: 'fl.db'

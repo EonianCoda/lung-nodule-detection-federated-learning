@@ -103,8 +103,8 @@ class LobeSegmentation:
             return
         
         # Check if gpu available
-        import tensorflow as tf
-        use_gpu = (len(tf.config.list_physical_devices('GPU')) != 0)
+        import torch
+        use_gpu = torch.cuda.is_available()
         # Compute lobe mask of series
         lobe_3d, lobe_bbox_3d = LobeSegmentation.compute_lobe_mask_of_series(image_path, use_gpu)
         # Save Lobe Mask
