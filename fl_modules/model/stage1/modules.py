@@ -32,7 +32,7 @@ class ConvBlock3D(nn.Module):
         if self.norm_layer is not None:
             x = self.norm_layer(x)
 
-        if self.activation:
+        if self.activation is not None:
             x = self.activation(x)
 
         return x
@@ -97,7 +97,7 @@ class AttentionGate(nn.Module):
 
         psi_f = self.psi_f(f)
         rate = torch.sigmoid(psi_f)
-        rate = F.interpolate(rate, scale_factor=(2, 2, 2), mode='trilinear')
+        rate = F.interpolate(rate, scale_factor=2.0, mode='trilinear')
 
         att_x = x * rate
         return att_x

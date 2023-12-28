@@ -17,7 +17,7 @@ class DecoderBlock(nn.Module):
 
     def forward(self, x, g):
         att = self.attention_gate(x, g)
-        upsampled = self.upsample(F.interpolate(g, scale_factor=(2, 2, 2), mode='trilinear', align_corners=False))
+        upsampled = self.upsample(F.interpolate(g, scale_factor=2.0, mode='trilinear', align_corners=False))
         merged = torch.cat((att, upsampled), dim=1)
         output = self.merge(merged)
         return output
