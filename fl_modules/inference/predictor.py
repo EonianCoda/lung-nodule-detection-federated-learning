@@ -5,7 +5,7 @@ from multiprocessing.pool import Pool
 import os
 import torch
 import torch.nn as nn
-
+from torch.utils.data import DataLoader
 # openfl system package
 from .utils import normalize_paths, compute_recall, compute_precision, compute_f1_score
 from .utils import load_model, load_gt_mask_maps, load_series_images
@@ -95,10 +95,10 @@ class SeriesSlicesGenerator:
         """
         # Ensure the data type of series_image is torch.Tensor
         if not isinstance(series_image, torch.Tensor):
-            series_image = torch.tensor(series_image)
+            series_image = torch.from_numpy(series_image).float()
             
         self.device = device
-        series_image = series_image.to(self.device)
+        series_image = series_image.to(self.device, non_blocking=True)
             
         # Generate all pairs of series(start_sliceID, end_sliceID)
         self.slice_id_pairs = []
@@ -208,7 +208,7 @@ class PredictorStage1(object):
         self.device = device    
         # initialize model
         self.model = load_model(1, model, device)
-
+        self.model.eval()
         self.model_input_shape = model_input_shape[:-1] # ignore the dimension only for conv3d
         self.depth = self.model_input_shape[-1]
         self.stride = self.depth // 2
@@ -226,6 +226,8 @@ class PredictorStage1(object):
         self.augmented_inference = augmented_inference
         self.iou_mode = iou_mode
         self.log_metrics = log_metrics
+        
+        self.num_workers = max(os.cpu_count() // 4, 2)
         
     def get_bboxes_of_nodules_in_series(self, series_path: str) -> List[List[Tuple[int, int, int, int, int]]]:
         """
@@ -289,7 +291,7 @@ class PredictorStage1(object):
             print(error)
 
         prefetch_dataset = PrefetchSeries(series_paths)
-        pool = Pool(os.cpu_count() // 2)
+        pool = Pool(self.num_workers)
         try:
             for task_i, series_image in enumerate(prefetch_dataset):
                 gt_mask_maps_path = gt_mask_maps_paths[task_i]
@@ -481,10 +483,12 @@ class PredictorStage1(object):
 
         sorted_key_of_different_type = list(sorted(self.nodule_size_ranges, key=lambda k: self.nodule_size_ranges[k]))
         sorted_key_of_different_type.append('all')
-        pool = Pool(os.cpu_count() // 2)
+        pool = Pool(self.num_workers)
         prefetch_dataset = PrefetchSeries(series_paths)
+        prefetch_dataloader = DataLoader(prefetch_dataset, batch_size=1, num_workers=1, prefetch_factor=1, pin_memory=True)
         try:
-            for task_i, series_image in enumerate(prefetch_dataset):
+            for task_i, series_image in enumerate(prefetch_dataloader):
+                series_image = series_image[0]
                 gt_mask_maps_path = gt_mask_maps_paths[task_i]
                 if self.use_lobe:
                     lobe_path = lobe_paths[task_i]

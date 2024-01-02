@@ -4,40 +4,21 @@ from threading import Lock
 import numpy as np
 import numpy.typing as npt
 from typing import List
-
+from torch.utils.data import Dataset
 import torch
 from .utils import load_series_images
 
 logger = logging.getLogger(__name__)
 
-class PrefetchSeries:
+class PrefetchSeries(Dataset):
     def __init__(self, series_path_list: List[str]):
-        self.executor = ThreadPoolExecutor()
+        super(PrefetchSeries, self).__init__()
         self.series_path_list = series_path_list
 
-    def __iter__(self):
-        if len(self.series_path_list) == 0:
-            return
-        # initialize first data
-        future = self.executor.submit(self._prefetch_next_data, 0)
-
-        for cur_idx in range(1, len(self)):
-            cur_data = future.result()
-            # Prefetch next data before yield current data
-            future = self.executor.submit(self._prefetch_next_data, cur_idx)
-            yield cur_data
-
-        last_data = future.result()
-        yield last_data
-
-    def _prefetch_next_data(self, idx: int) -> torch.Tensor:
-        """
-        Return: torch.Tensor
-            A image series data with shape (D, H, W)
-        """
-        series_path = self.series_path_list[idx]
+    def __getitem__(self, index: int):
+        series_path = self.series_path_list[index]
         series_data = load_series_images(series_path)
-        series_data = torch.tensor(series_data, dtype = torch.float32)
+        series_data = torch.from_numpy(series_data).float()
         series_data = series_data.permute(2, 0, 1) # (H, W, D) -> (D, H, W)
         return series_data
 

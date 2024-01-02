@@ -77,11 +77,11 @@ def load_lobe(lobe_path: str) -> npt.NDArray[np.uint8]:
 def load_series_images(series_path: str) -> npt.NDArray[np.float32]:
     if not series_path.endswith('.npy'):
         raise ValueError("The file of series should be npy file!")
-    series = np.load(series_path).astype(np.float32, copy=False)
+    series = np.load(series_path)
     # HU value conversion, which ranges from -1000 ~ 400
     series = np.clip(series, HU_MIN, HU_MAX)
     # transform HU values (-1000, 400) to (0, 1)
-    series = (series - HU_MIN) / (HU_MAX - HU_MIN)
+    series = (series - HU_MIN).astype(np.float32, copy=False) / (HU_MAX - HU_MIN)
     return series
 
 def expand_neighboring_bbox2d(bbox1: List[int], bbox2: List[int], p=False) -> Tuple[List[int], List[int]]:

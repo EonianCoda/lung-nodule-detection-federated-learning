@@ -127,8 +127,9 @@ class LobeSegmentation:
     @staticmethod
     def compute_lobe_mask_of_series(image_path: str, use_gpu: bool) -> Tuple[NDArray[np.uint8], NDArray[np.int32]]:
         """
-        Return: NDArray[np.uint8]
-            lobe binary mask
+        Return: Tuple[NDArray[np.uint8], NDArray[np.int32]]
+            First array is lobe mask, second array is bbox of lobe mask, e.g [[y_min, y_max], [x_min, x_max], [z_min, z_max]]
+            
         """
         dicom_3d = LobeSegmentation._load_series_image(image_path, use_gpu)
         binary_3d = LobeSegmentation._binarization(dicom_3d, use_gpu)
