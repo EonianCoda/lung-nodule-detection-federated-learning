@@ -47,17 +47,20 @@ def split_data_by_ratio(feats: np.ndarray,
 
     cluster_labels = kmeans.labels_
     cluster_indices = np.arange(n_clusters)
-    
     splitted_samples = [list() for _ in range(len(ratios))]
     
     arg_sorted_ratios = np.argsort(ratios)
+    arg_sorted_ratios = arg_sorted_ratios[::-1] # descending order
     
     for cluster_i in cluster_indices:
         data_idx = np.where(cluster_labels == cluster_i)[0]
         len_data_idx = len(data_idx)
         
-        n_samples_per_client = [int(len_data_idx * ratio) for ratio in ratios]
+        n_samples_per_client = [max(int(len_data_idx * ratio), 1) for ratio in ratios]
+        
         for split_i in range(len(ratios)):
+            if len(data_idx) == 0:
+                break
             splitted_samples[split_i].extend(data_idx[:n_samples_per_client[split_i]].tolist())
             data_idx = data_idx[n_samples_per_client[split_i]:]
         
@@ -79,9 +82,12 @@ def get_nodule_counts_info(feat_of_series: np.ndarray, indices: List[int], sorte
     feat = np.zeros_like(feat_of_series[0])
     for idx in indices:
         feat += feat_of_series[idx]
-        
+    
+    all_counts = np.sum(feat)
+    
     for nodule_type, num in zip(sorted_nodule_size_ranges, feat):
         info += '{:19s}: {:5d}\n'.format(nodule_type, num)
+    info += '{:19s}: {:5d}\n'.format('All', all_counts)
     info += '\n'
     return info
 
@@ -128,6 +134,7 @@ if __name__ == '__main__':
         feat_of_series.append(np.array([num_nodule[nodule_type] for nodule_type in sorted_nodule_size_ranges]))
     feat_of_series = np.stack(feat_of_series, axis=0)
     # Normalize feature = feat - mean / std
+    normalized_feat_of_series = feat_of_series.copy()
     normalized_feat_of_series = (feat_of_series - np.mean(feat_of_series, axis=0)) / np.std(feat_of_series, axis=0)
 
     # Split pretrained samples
@@ -135,7 +142,7 @@ if __name__ == '__main__':
         pretrained_samples, non_pretrained_samples = split_data_by_ratio(normalized_feat_of_series, n_clusters, [pretrained_ratio, 1 - pretrained_ratio], seed)
         # Split train/val
         feats = normalized_feat_of_series[pretrained_samples]
-        train_pretrained_samples, val_pretrained_samples = split_data_by_ratio(feats, n_clusters // 2, pretrained_train_val_ratios, seed)
+        train_pretrained_samples, val_pretrained_samples = split_data_by_ratio(feats, n_clusters, pretrained_train_val_ratios, seed)
         pretrained_train_samples = pretrained_samples[train_pretrained_samples]
         pretrained_val_samples = pretrained_samples[val_pretrained_samples]
         
@@ -155,7 +162,7 @@ if __name__ == '__main__':
     test_clients_samples = []
     for i in range(n_clients):
         feats = normalized_feat_of_series[clients_samples[i]]
-        train_samples, val_samples, test_samples = split_data_by_ratio(feats, n_clusters // 2, train_val_test_ratios, seed)
+        train_samples, val_samples, test_samples = split_data_by_ratio(feats, n_clusters, train_val_test_ratios, seed)
         
         train_clients_samples.append(clients_samples[i][train_samples])
         val_clients_samples.append(clients_samples[i][val_samples])
@@ -166,7 +173,7 @@ if __name__ == '__main__':
         unlabeled_train_clients_samples = []
         for i in range(n_clients):
             feats = normalized_feat_of_series[train_clients_samples[i]]
-            unlabeled_train_samples, labeled_train_samples = split_data_by_ratio(feats, n_clusters // 2, [unlabeled_ratio, 1 - unlabeled_ratio], seed)
+            unlabeled_train_samples, labeled_train_samples = split_data_by_ratio(feats, n_clusters, [unlabeled_ratio, 1 - unlabeled_ratio], seed)
             
             unlabeled_train_clients_samples.append(train_clients_samples[i][unlabeled_train_samples])
             train_clients_samples[i] = train_clients_samples[i][labeled_train_samples]
