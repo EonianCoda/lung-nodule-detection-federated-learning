@@ -11,6 +11,8 @@
 - add shell script `split_data.sh` for splitting data
 ### Changed
 - when split data, normalize each dimension of feature to make the mean and std of each dimension to be 0 and 1 respectively
+### Refactor
+- refactor `train_stage1.py`, `/fl_modules/client/stage1_logic.py`, `/fl_modules/client/augmentation.py` and `/fl_modules/client/stage1_dataset.py` to support mixed precision training
 ## [1.0.1] - 2023-12-30
 ### Fixed
 - change calculate lobe mask using tensorflow to torch

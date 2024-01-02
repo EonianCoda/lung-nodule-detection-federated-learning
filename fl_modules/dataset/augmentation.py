@@ -1,21 +1,25 @@
 import random
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Union
 import albumentations as A
 import cv2
-
+import torch
 class RandomFlipYXZ:
     def __init__(self, p: float = 0.5):
         self.p = p
-    def __call__(self, images: Tuple[np.ndarray]) -> Tuple[np.ndarray]:
+    def __call__(self, images: Union[Tuple[np.ndarray], Tuple[np.ndarray]]) -> Union[Tuple[np.ndarray], Tuple[np.ndarray]]:
         flip_axes = []
         for i in range(3):
             if random.random() < self.p:
                 flip_axes.append(i)
         if len(flip_axes) != 0:
             for i in range(len(images)):
-                images[i] = np.flip(images[i], axis = flip_axes)
+                if isinstance(images[i], torch.Tensor):
+                    images[i] = torch.flip(images[i], dims = flip_axes)
+                else:
+                    images[i] = np.flip(images[i], axis = flip_axes)
         return images
+    
 def random_color(image, p: float = 0.3, intensity: float = 1.0):
     image = A.RandomBrightnessContrast(brightness_limit = 0.1 * intensity, 
                                        contrast_limit = 0.1 * intensity,

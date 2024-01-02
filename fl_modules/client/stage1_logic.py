@@ -14,13 +14,13 @@ logger = logging.getLogger(__name__)
 PRINT_EVERY = 1000
 
 def train(model: nn.Module, 
-          dataset: Dataset, 
+          dataloader: DataLoader,
           optimizer: torch.optim.Optimizer,
           num_epoch: int, 
           device: torch.device,
           ema: EMA = None,
-          batch_size = 1,
           enable_progress_bar = False,
+          mixed_precision = True,
           log_metric = False) -> Dict[str, float]:
     
     model.train()
@@ -31,28 +31,43 @@ def train(model: nn.Module,
     
     running_loss512, running_loss256, running_total_loss = 0.0, 0.0, 0.0
     
+    if mixed_precision:
+        scaler = torch.cuda.amp.GradScaler()
+    
     for epoch in range(num_epoch):
-        dataset.shuffle_data()
-        train_dataloader = DataLoader(dataset, batch_size = batch_size, shuffle = False, num_workers = os.cpu_count() // 2)
-        total_num_steps = len(train_dataloader)
+        total_num_steps = len(dataloader)
         
         if enable_progress_bar:
-            progress_bar = get_progress_bar('Train', len(train_dataloader), epoch, num_epoch)
+            progress_bar = get_progress_bar('Train', len(dataloader), epoch, num_epoch)
         else:
             progress_bar = None
         running_loss512, running_loss256, running_total_loss = 0.0, 0.0, 0.0
-        for step, (inputs, target512, target256) in enumerate(train_dataloader):
-            inputs, target512, target256 = inputs.to(device), target512.to(device), target256.to(device)
-            outputs512, outputs256 = model(inputs)
-            
-            # Calculate loss            
-            loss512 = loss_fn(target512, outputs512)
-            loss256 = loss_fn(target256, outputs256)
-            loss = loss512 * loss_weights[0] + loss256 * loss_weights[1]
-            
-            # Update weights
-            loss.backward()
-            optimizer.step()
+        
+        
+        for step, (inputs, target512, target256) in enumerate(dataloader):
+            if mixed_precision:
+                with torch.cuda.amp.autocast():
+                    inputs, target512, target256 = inputs.to(device, non_blocking = True), target512.to(device, non_blocking = True), target256.to(device, non_blocking = True)
+                    outputs512, outputs256 = model(inputs)
+                    loss512 = loss_fn(target512, outputs512)
+                    loss256 = loss_fn(target256, outputs256)
+                    loss = loss512 * loss_weights[0] + loss256 * loss_weights[1]
+                
+                # Update weights
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                inputs, target512, target256 = inputs.to(device, non_blocking = True), target512.to(device, non_blocking = True), target256.to(device, non_blocking = True)
+                outputs512, outputs256 = model(inputs)
+                # Calculate loss            
+                loss512 = loss_fn(target512, outputs512)
+                loss256 = loss_fn(target256, outputs256)
+                loss = loss512 * loss_weights[0] + loss256 * loss_weights[1]
+                
+                # Update weights
+                loss.backward()
+                optimizer.step()
             optimizer.zero_grad()
             
             # Update EMA

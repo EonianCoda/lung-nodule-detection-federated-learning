@@ -5,6 +5,7 @@ import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from fl_modules.client.stage1_logic import train, validation, test
@@ -34,7 +35,7 @@ def get_parser():
     parser.add_argument('--val_set', default = 'fl_cmp_valABC.txt')
     parser.add_argument('--test_set', default = 'val.txt')
     parser.add_argument('--batch_size', type = int, default = 1)
-    parser.add_argument('--num_epoch', type = int, default = 30)
+    parser.add_argument('--num_epoch', type = int, default = 50)
     parser.add_argument('--iou_threshold', type = float, default = 0.2)
     parser.add_argument('--test_iou_threshold', type = float, default = 0.01)
     parser.add_argument('--test_nodule_3d_minimum_size', type = int, default = 5)
@@ -45,7 +46,10 @@ def get_parser():
     parser.add_argument('--apply_ema', action='store_true', default=False)
     parser.add_argument('--ema_decay', type=float, default=0.999)
     parser.add_argument('--resume_model_path', type=str, default='')
-    parser.add_argument('--best_model_metric_name', type=str, default='recall')
+    parser.add_argument('--mixed_precision', action='store_true', default=False)
+    parser.add_argument('--num_workers', type=int, default=4)
+    parser.add_argument('--pin_memory', action='store_true', default=False)
+    parser.add_argument('--best_model_metric_name', type=str, default='f1_score')
     args = parser.parse_args()
     return args
 
@@ -82,6 +86,9 @@ if __name__ == '__main__':
     apply_ema = args.apply_ema
     resume_model_path = args.resume_model_path
     best_model_metric_name = args.best_model_metric_name
+    mixed_precision = args.mixed_precision
+    num_workers = args.num_workers
+    pin_memory = args.pin_memory
     # Set seed
     init_seed(seed)
     # Experiment Name
@@ -159,18 +166,21 @@ if __name__ == '__main__':
                                     depth = 32,
                                     nodule_size_ranges = nodule_size_ranges,
                                     num_nodules = num_nodule_in_train_set,
+                                    mixed_precision = mixed_precision,
                                     series_list_path = train_set_path)
     
     val_dataset = Stage1Dataset(dataset_type = 'valid',
                                 depth = 32,
                                 nodule_size_ranges = nodule_size_ranges,
                                 num_nodules = num_nodule_in_val_set,
+                                mixed_precision = mixed_precision,
                                 series_list_path = val_set_path)
     
     test_dataset = Stage1Dataset(dataset_type = 'test',
                                 depth = 32,
                                 nodule_size_ranges = nodule_size_ranges,
                                 num_nodules = num_nodule_in_test_set,
+                                mixed_precision = mixed_precision,
                                 series_list_path = test_set_path)
 
     # Training
@@ -179,19 +189,26 @@ if __name__ == '__main__':
     best_metric = 0.0
     last_best_txt = ''
     
+    train_dataloader = DataLoader(train_dataset, 
+                                  batch_size = batch_size, 
+                                  num_workers=num_workers,
+                                  prefetch_factor = 1,
+                                  pin_memory=pin_memory)
+    
     model = model.to(device)
     for epoch in range(start_epoch, end_epoch):
         logger.info("Epoch {}/{}:".format(epoch + 1, end_epoch))
+        train_dataset.shuffle_data()
         # Train
         train_metrics = train(model = model, 
-                                     dataset = train_dataset, 
-                                     optimizer = optimizer, 
-                                     num_epoch = 1, 
-                                     batch_size = batch_size, 
-                                     device = device, 
-                                     enable_progress_bar=True,
-                                     log_metric=True,
-                                     ema = ema)
+                                dataloader = train_dataloader, 
+                                optimizer = optimizer, 
+                                num_epoch = 1,
+                                mixed_precision = mixed_precision,
+                                device = device, 
+                                enable_progress_bar=True,
+                                log_metric=True,
+                                ema = ema)
         write_metrics(train_metrics, epoch, 'train', writer)
         
         # Use Shadow model to validate and save model

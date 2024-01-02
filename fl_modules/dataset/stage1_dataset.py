@@ -18,7 +18,8 @@ class Stage1Dataset(Dataset):
                 nodule_size_ranges: Dict[str, Tuple[int, int]],
                 num_nodules: Dict[str, int],
                 series_list_path: str,
-                depth: int):
+                depth: int,
+                mixed_precision = False):
         super(Stage1Dataset, self).__init__()
         self.dataset_type = dataset_type
         self.nodule_size_ranges = nodule_size_ranges
@@ -34,7 +35,7 @@ class Stage1Dataset(Dataset):
         
         self.series_nodule_slice_ids = []
         self.series_first_and_end_valid_slice = []
-        
+        self.mixed_precision = mixed_precision
         for folder, file_name in load_series_list(series_list_path):
             series_path = os.path.join(folder, 
                         'npy', 
@@ -116,12 +117,14 @@ class Stage1Dataset(Dataset):
         image = image[..., start_slice_id: start_slice_id + self.depth]
         image = np.clip(image, HU_MIN, HU_MAX)
         image = image - HU_MIN
-        image = image.astype(np.float32) / (HU_MAX - HU_MIN)
+        dtpye = np.float16 if self.mixed_precision else np.float32
+        image = image.astype(dtpye) / (HU_MAX - HU_MIN)
         return image
 
     def augmentation(self, images: List[np.ndarray]) -> List[np.ndarray]:
-        images = RandomFlipYXZ(p = 0.3)(images)
         return images
+        # images = RandomFlipYXZ(p = 0.3)(images)
+        # return images
 
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
@@ -134,24 +137,31 @@ class Stage1Dataset(Dataset):
         image = self.load_image(image_path, start_slice_id)
         target512 = self.load_gt_mask(mask_path, start_slice_id)
         
-        if self.dataset_type == 'train':
-            image, target512 = self.augmentation([image, target512])
-
-        # Change dimension order from (H, W, D) to (D, H, W)
-        image = np.transpose(image, (2, 0, 1))  
-        target512 = np.transpose(target512, (2, 0, 1))
-        
         target256 = ndimage.zoom(target512, zoom=(1 / 2, 1 / 2, 1 / 2), mode="nearest", order=0)
 
-        # Add channel dimension from (D, H, W) to (1, D, H, W)
-        image = np.expand_dims(image, 0)
-        target512 = np.expand_dims(target512, 0)
-        target256 = np.expand_dims(target256, 0)
-        
         # Convert to tensor
-        image = torch.from_numpy(image.copy()).float()
-        target512 = torch.from_numpy(target512.copy()).float()
-        target256 = torch.from_numpy(target256.copy()).float()
+        image = torch.from_numpy(image)
+        target512 = torch.from_numpy(target512)
+        target256 = torch.from_numpy(target256)
+        
+        if self.dataset_type == 'train':
+            image, target512, target256 = RandomFlipYXZ(p = 0.3)([image, target512, target256])
+        
+        # Change dimension order from (H, W, D) to (D, H, W)
+        image = torch.permute(image, (2, 0, 1))
+        target512 = torch.permute(target512, (2, 0, 1))
+        target256 = torch.permute(target256, (2, 0, 1))
+        # Add channel dimension from (D, H, W) to (1, D, H, W)
+        image = torch.unsqueeze(image, 0)
+        target512 = torch.unsqueeze(target512, 0)
+        target256 = torch.unsqueeze(target256, 0)
+        
+        if self.mixed_precision:
+            target256 = target256.half()
+            target256 = target256.half()
+        else:
+            target256 = target256.float()
+            target512 = target512.float()
         
         return image, target512, target256
     
