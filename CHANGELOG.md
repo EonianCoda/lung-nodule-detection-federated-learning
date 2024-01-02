@@ -5,8 +5,14 @@
 ## Unreleased
 ### Main Feature
 - add semi supervised learning(ssl) training
+## [1.0.2] - 2024-01-02
+### Fixed
 
-## [1.1.0] - 2023-12-30
+### Added
+
+### Changed
+- when split data, normalize each dimension of feature to make the mean and std of each dimension to be 0 and 1 respectively
+## [1.0.1] - 2023-12-30
 ### Fixed
 - change calculate lobe mask using tensorflow to torch
 ### Added

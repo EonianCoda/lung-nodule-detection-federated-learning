@@ -11,8 +11,8 @@ import os
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--series_txt_path', type=str)
-    parser.add_argument('--n_clusters', type=int, default=10)
+    parser.add_argument('--series_txt_path', type=str, required=True)
+    parser.add_argument('--n_clusters', type=int, default=100)
     parser.add_argument('--n_clients', type=int, default=3)
     parser.add_argument('--experiment_config_path', type=str, default='./config/stage1_fedavg.yaml')
     parser.add_argument('--save_root', type=str, default='./data/lung_nodule')
@@ -74,23 +74,25 @@ def split_data_by_ratio(feats: np.ndarray,
     splitted_samples = [np.array(samples) for samples in splitted_samples]
     return splitted_samples
 
-def print_nodules(feat_of_series: np.ndarray , indices: List[int], sorted_nodule_size_ranges, save_file: str = None):
+def get_nodule_counts_info(feat_of_series: np.ndarray, indices: List[int], sorted_nodule_size_ranges) -> str:
+    info = ''
     feat = np.zeros_like(feat_of_series[0])
     for idx in indices:
         feat += feat_of_series[idx]
         
-    if save_file is not None:
-        f = open(save_file, 'a')
-    else:
-        f = None
-        
     for nodule_type, num in zip(sorted_nodule_size_ranges, feat):
-        print('{:19s}: {:5d}'.format(nodule_type, num), file=f)
-    print('', file=f)
-    
-    if f is not None:
-        f.close()
+        info += '{:19s}: {:5d}\n'.format(nodule_type, num)
+    info += '\n'
+    return info
 
+def get_dist_of_split(feat_of_series: np.ndarray, indices: List[int]) -> np.ndarray:
+    feat = np.zeros_like(feat_of_series[0])
+    for idx in indices:
+        feat += feat_of_series[idx]
+    
+    feat = feat / np.sum(feat)
+    return feat
+    
 if __name__ == '__main__':
     args = get_args()
     series_txt_path = args.series_txt_path
@@ -103,7 +105,14 @@ if __name__ == '__main__':
     pretrained_train_val_ratios = args.pretrained_train_val_ratios
     use_unlabel = args.use_unlabel
     unlabeled_ratio = args.unlabeled_ratio
+    save_root = args.save_root
     seed = args.seed
+    
+    splitted_info_save_path = os.path.join(save_root, 'splitted_info.txt')
+    splitted_info = 'Arguments:\n'
+    for key, value in vars(args).items():
+        splitted_info += f'{key}: {value}\n'
+    splitted_info += '-' * 50 + '\n'
     
     experiment_config = load_yaml(experiment_config_path)
     series_list = load_series_list(series_txt_path)
@@ -111,7 +120,6 @@ if __name__ == '__main__':
     
     nodule_counter = NoduleCounter()
     num_nodule_of_series = nodule_counter.count_and_analyze_nodules_of_multi_series(series_txt_path, nodule_size_ranges, mode='single')
-    n_samples = len(num_nodule_of_series)
 
     # Use number of different nodule tpye of series to build feature of series 
     sorted_nodule_size_ranges = sorted(nodule_size_ranges.keys())
@@ -119,12 +127,14 @@ if __name__ == '__main__':
     for num_nodule in num_nodule_of_series:
         feat_of_series.append(np.array([num_nodule[nodule_type] for nodule_type in sorted_nodule_size_ranges]))
     feat_of_series = np.stack(feat_of_series, axis=0)
+    # Normalize feature = feat - mean / std
+    normalized_feat_of_series = (feat_of_series - np.mean(feat_of_series, axis=0)) / np.std(feat_of_series, axis=0)
 
     # Split pretrained samples
     if use_pretrained:
-        pretrained_samples, non_pretrained_samples = split_data_by_ratio(feat_of_series, n_clusters, [pretrained_ratio, 1 - pretrained_ratio], seed)
+        pretrained_samples, non_pretrained_samples = split_data_by_ratio(normalized_feat_of_series, n_clusters, [pretrained_ratio, 1 - pretrained_ratio], seed)
         # Split train/val
-        feats = feat_of_series[pretrained_samples]
+        feats = normalized_feat_of_series[pretrained_samples]
         train_pretrained_samples, val_pretrained_samples = split_data_by_ratio(feats, n_clusters // 2, pretrained_train_val_ratios, seed)
         pretrained_train_samples = pretrained_samples[train_pretrained_samples]
         pretrained_val_samples = pretrained_samples[val_pretrained_samples]
@@ -132,19 +142,19 @@ if __name__ == '__main__':
     # Split clients samples
     normal_ratios = [1 / n_clients for _ in range(n_clients)]
     if use_pretrained:
-        feats = feat_of_series[non_pretrained_samples]
+        feats = normalized_feat_of_series[non_pretrained_samples]
         clients_samples = split_data_by_ratio(feats, n_clusters, normal_ratios, seed)
         for i in range(n_clients):
             clients_samples[i] = non_pretrained_samples[clients_samples[i]]
     else:
-        clients_samples = split_data_by_ratio(feat_of_series, n_clusters, normal_ratios, seed)
+        clients_samples = split_data_by_ratio(normalized_feat_of_series, n_clusters, normal_ratios, seed)
     
     # Split train/val/test
     train_clients_samples = []
     val_clients_samples = []
     test_clients_samples = []
     for i in range(n_clients):
-        feats = feat_of_series[clients_samples[i]]
+        feats = normalized_feat_of_series[clients_samples[i]]
         train_samples, val_samples, test_samples = split_data_by_ratio(feats, n_clusters // 2, train_val_test_ratios, seed)
         
         train_clients_samples.append(clients_samples[i][train_samples])
@@ -155,46 +165,71 @@ if __name__ == '__main__':
     if use_unlabel:
         unlabeled_train_clients_samples = []
         for i in range(n_clients):
-            feats = feat_of_series[train_clients_samples[i]]
+            feats = normalized_feat_of_series[train_clients_samples[i]]
             unlabeled_train_samples, labeled_train_samples = split_data_by_ratio(feats, n_clusters // 2, [unlabeled_ratio, 1 - unlabeled_ratio], seed)
             
             unlabeled_train_clients_samples.append(train_clients_samples[i][unlabeled_train_samples])
             train_clients_samples[i] = train_clients_samples[i][labeled_train_samples]
 
+
+    dists_of_split = []
+
     # Calculate number of different nodule type of each client
     if use_pretrained:
-        print('Pretrained, number of samples: {}'.format(len(pretrained_samples)))
-        print_nodules(feat_of_series, pretrained_samples, sorted_nodule_size_ranges)
-        print('Non-pretrained, number of samples: {}'.format(len(non_pretrained_samples)))
-        print_nodules(feat_of_series, non_pretrained_samples, sorted_nodule_size_ranges)
+        splitted_info += 'Pretrained, number of patients: {}\n'.format(len(pretrained_samples))
+        splitted_info += get_nodule_counts_info(feat_of_series, pretrained_samples, sorted_nodule_size_ranges)
+        splitted_info += 'Non-pretrained, number of patients: {}\n'.format(len(non_pretrained_samples))
+        splitted_info += get_nodule_counts_info(feat_of_series, non_pretrained_samples, sorted_nodule_size_ranges)
         
-        print('Pretrained train, number of samples: {}'.format(len(pretrained_train_samples)))
-        print_nodules(feat_of_series, pretrained_train_samples, sorted_nodule_size_ranges)
-        print('Pretrained val, number of samples: {}'.format(len(pretrained_val_samples)))
-        print_nodules(feat_of_series, pretrained_val_samples, sorted_nodule_size_ranges)
-        print('-' * 50)
+        splitted_info += 'Pretrained train, number of patients: {}\n'.format(len(pretrained_train_samples))
+        splitted_info += get_nodule_counts_info(feat_of_series, pretrained_train_samples, sorted_nodule_size_ranges)
+        splitted_info += 'Pretrained val, number of patients: {}\n'.format(len(pretrained_val_samples))
+        splitted_info += get_nodule_counts_info(feat_of_series, pretrained_val_samples, sorted_nodule_size_ranges)
+        splitted_info += '-' * 50 + '\n'
+        
+        # Calculate distribution of each split
+        dists_of_split.append(get_dist_of_split(feat_of_series, pretrained_train_samples))
+        dists_of_split.append(get_dist_of_split(feat_of_series, pretrained_val_samples))
+        
     for i in range(n_clients):
-        print(f'Client{i}, number of samples: {len(clients_samples[i])}')
+        splitted_info += f'Client{i}, number of patients: {len(clients_samples[i])}\n'
         if use_unlabel:
-            print('Unlabeled train, number of samples: {}'.format(len(unlabeled_train_clients_samples[i])))
-            print_nodules(feat_of_series, unlabeled_train_clients_samples[i], sorted_nodule_size_ranges)
+            splitted_info += 'Unlabeled train, number of patients: {}\n'.format(len(unlabeled_train_clients_samples[i]))
+            splitted_info += get_nodule_counts_info(feat_of_series, unlabeled_train_clients_samples[i], sorted_nodule_size_ranges)
         
-        print('Labeled train, number of samples: {}'.format(len(train_clients_samples[i])))
-        print_nodules(feat_of_series, train_clients_samples[i], sorted_nodule_size_ranges)
+        splitted_info += 'Labeled train, number of patients: {}\n'.format(len(train_clients_samples[i]))
+        splitted_info += get_nodule_counts_info(feat_of_series, train_clients_samples[i], sorted_nodule_size_ranges)
         
-        print('Val, number of samples: {}'.format(len(val_clients_samples[i])))
-        print_nodules(feat_of_series, val_clients_samples[i], sorted_nodule_size_ranges)
-        print('Test, number of samples: {}'.format(len(test_clients_samples[i])))
-        print_nodules(feat_of_series, test_clients_samples[i], sorted_nodule_size_ranges)
-        print('-' * 50)
+        splitted_info += 'Val, number of patients: {}\n'.format(len(val_clients_samples[i]))
+        splitted_info += get_nodule_counts_info(feat_of_series, val_clients_samples[i], sorted_nodule_size_ranges)
+        
+        splitted_info += 'Test, number of patients: {}\n'.format(len(test_clients_samples[i]))
+        splitted_info += get_nodule_counts_info(feat_of_series, test_clients_samples[i], sorted_nodule_size_ranges)
+        splitted_info += '-' * 50 + '\n'
+        
+        # Calculate distribution of each split
+        dists_of_split.append(get_dist_of_split(feat_of_series, train_clients_samples[i]))
+        dists_of_split.append(get_dist_of_split(feat_of_series, val_clients_samples[i]))
+        dists_of_split.append(get_dist_of_split(feat_of_series, test_clients_samples[i]))
+        
+    dists_of_split = np.stack(dists_of_split, axis=0)
+    # splitted_info += 'Distribution of each split = {:.4f} +- {:.4f}\n'.format(np.mean(dists_of_split), np.std(dists_of_split))
+    splitted_info += 'Average standard deviation of each split = {:.4f}\n'.format(np.mean(np.std(dists_of_split, axis=0)))
     # Save clients samples
-    if os.path.exists(args.save_root):
-        shutil.rmtree(args.save_root)
-    header = 'Folder,Filename\n'
+    if os.path.exists(save_root):
+        shutil.rmtree(save_root)
+        
+    os.makedirs(save_root, exist_ok=True)
     
+    shutil.copy(series_txt_path, os.path.join(save_root, 'all.txt'))
+    
+    with open(splitted_info_save_path, 'w') as f:
+        f.write(splitted_info)
+    
+    header = 'Folder,Filename\n'
     # Save pretrained samples
     if use_pretrained:
-        save_path = f'{args.save_root}/pretrained.txt'
+        save_path = f'{save_root}/pretrained.txt'
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         with open(save_path, 'w') as f:
             f.write(header)
@@ -205,7 +240,7 @@ if __name__ == '__main__':
         modes = ['train', 'val']
         samples_list = [pretrained_train_samples, pretrained_val_samples]
         for mode, samples in zip(modes, samples_list):
-            save_path = f'{args.save_root}/pretrained_{mode}.txt'
+            save_path = f'{save_root}/pretrained_{mode}.txt'
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             with open(save_path, 'w') as f:
                 f.write(header)
@@ -214,7 +249,7 @@ if __name__ == '__main__':
                     
     for i in range(n_clients):
         # Save all samples
-        save_path = f'{args.save_root}/client{i}.txt'
+        save_path = f'{save_root}/client{i}.txt'
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         with open(save_path, 'w') as f:
             f.write(header)
@@ -228,7 +263,7 @@ if __name__ == '__main__':
             modes.append('unlabeled_train')
             samples_list.append(unlabeled_train_clients_samples[i])
         for mode, samples in zip(modes, samples_list):
-            save_path = f'{args.save_root}/client{i}_{mode}.txt'
+            save_path = f'{save_root}/client{i}_{mode}.txt'
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             with open(save_path, 'w') as f:
                 f.write(header)
