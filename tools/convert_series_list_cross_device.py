@@ -1,11 +1,11 @@
 import os
 import shutil
 
-ME_ROOT = 'D:\\workspace\\medical_dataset\\LN_dataset'
-LDCT_TEST_ROOT = 'D:\\workspace\\medical_dataset\\LDCT_test_dataset'
-LN_ROOT = 'D:\\workspace\\medical_dataset\\LN_dataset'
-SERIES_LIST_TEXT_ROOT = 'D:\\workspace\\python\\lung-nodule-detection-federated-learning\\data\\lung_nodule'
-SAVE_ROOT = 'D:\\workspace\\python\\lung-nodule-detection-federated-learning\\data\\lung_nodule_cross_device'
+ME_ROOT = '/disk/HDD1/FL/ME_dataset'
+LDCT_TEST_ROOT = '/disk/HDD1/FL/LDCT_test_dataset'
+LN_ROOT = '/disk/HDD1/FL/LN_dataset'
+SERIES_LIST_TEXT_ROOT = '../data/lung_nodule'
+SAVE_ROOT = '../data/lung_nodule_cross_device'
 
 key_words = {'LDCT_test_dataset': LDCT_TEST_ROOT,
              'LN_dataset': LN_ROOT,
@@ -32,7 +32,7 @@ if __name__ == '__main__':
             for key_word in key_words.keys():
                 if key_word in folder:
                     root = key_words[key_word]
-                    new_lines.append('{},{}'.format(os.path.join(root, os.path.basename(folder)), filename))
+                    new_lines.append('{},{}'.format(os.path.join(root, filename.strip()), filename))
                     break
                 
         save_path = os.path.join(SAVE_ROOT, series_list_txt)

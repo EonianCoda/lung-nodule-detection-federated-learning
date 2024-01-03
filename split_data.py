@@ -171,16 +171,15 @@ if __name__ == '__main__':
     # Split unlabeled data
     if use_unlabel:
         unlabeled_train_clients_samples = []
+        labeled_train_clients_samples = []
         for i in range(n_clients):
             feats = normalized_feat_of_series[train_clients_samples[i]]
             unlabeled_train_samples, labeled_train_samples = split_data_by_ratio(feats, n_clusters, [unlabeled_ratio, 1 - unlabeled_ratio], seed)
             
             unlabeled_train_clients_samples.append(train_clients_samples[i][unlabeled_train_samples])
-            train_clients_samples[i] = train_clients_samples[i][labeled_train_samples]
-
+            labeled_train_clients_samples.append(train_clients_samples[i][labeled_train_samples])
 
     dists_of_split = []
-
     # Calculate number of different nodule type of each client
     if use_pretrained:
         splitted_info += 'Pretrained, number of patients: {}\n'.format(len(pretrained_samples))
@@ -200,12 +199,16 @@ if __name__ == '__main__':
         
     for i in range(n_clients):
         splitted_info += f'Client{i}, number of patients: {len(clients_samples[i])}\n'
+        
+        splitted_info += 'Train, number of patients: {}\n'.format(len(train_clients_samples[i]))
+        splitted_info += get_nodule_counts_info(feat_of_series, train_clients_samples[i], sorted_nodule_size_ranges)
+        
         if use_unlabel:
+            splitted_info += 'Labeled train, number of patients: {}\n'.format(len(labeled_train_clients_samples[i]))
+            splitted_info += get_nodule_counts_info(feat_of_series, labeled_train_clients_samples[i], sorted_nodule_size_ranges)
+            
             splitted_info += 'Unlabeled train, number of patients: {}\n'.format(len(unlabeled_train_clients_samples[i]))
             splitted_info += get_nodule_counts_info(feat_of_series, unlabeled_train_clients_samples[i], sorted_nodule_size_ranges)
-        
-        splitted_info += 'Labeled train, number of patients: {}\n'.format(len(train_clients_samples[i]))
-        splitted_info += get_nodule_counts_info(feat_of_series, train_clients_samples[i], sorted_nodule_size_ranges)
         
         splitted_info += 'Val, number of patients: {}\n'.format(len(val_clients_samples[i]))
         splitted_info += get_nodule_counts_info(feat_of_series, val_clients_samples[i], sorted_nodule_size_ranges)
@@ -220,8 +223,8 @@ if __name__ == '__main__':
         dists_of_split.append(get_dist_of_split(feat_of_series, test_clients_samples[i]))
         
     dists_of_split = np.stack(dists_of_split, axis=0)
-    # splitted_info += 'Distribution of each split = {:.4f} +- {:.4f}\n'.format(np.mean(dists_of_split), np.std(dists_of_split))
     splitted_info += 'Average standard deviation of each split = {:.4f}\n'.format(np.mean(np.std(dists_of_split, axis=0)))
+    
     # Save clients samples
     if os.path.exists(save_root):
         shutil.rmtree(save_root)
@@ -229,7 +232,6 @@ if __name__ == '__main__':
     os.makedirs(save_root, exist_ok=True)
     
     shutil.copy(series_txt_path, os.path.join(save_root, 'all.txt'))
-    
     with open(splitted_info_save_path, 'w') as f:
         f.write(splitted_info)
     
@@ -243,7 +245,7 @@ if __name__ == '__main__':
             for idx in pretrained_samples:
                 f.write(f'{series_list[idx][0]},{series_list[idx][1]}\n')
         
-        # Save train/val samples
+        # Save pretrained train/val samples
         modes = ['train', 'val']
         samples_list = [pretrained_train_samples, pretrained_val_samples]
         for mode, samples in zip(modes, samples_list):
@@ -266,9 +268,13 @@ if __name__ == '__main__':
         # Save train/val/test samples
         modes = ['train', 'val', 'test']
         samples_list = [train_clients_samples[i], val_clients_samples[i], test_clients_samples[i]]
+        
         if use_unlabel:
+            modes.append('labeled_train')
+            samples_list.append(labeled_train_clients_samples[i])
             modes.append('unlabeled_train')
             samples_list.append(unlabeled_train_clients_samples[i])
+        
         for mode, samples in zip(modes, samples_list):
             save_path = f'{save_root}/client{i}_{mode}.txt'
             os.makedirs(os.path.dirname(save_path), exist_ok=True)

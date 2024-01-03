@@ -7,6 +7,7 @@
 - add semi supervised learning(ssl) training
 ## [1.0.2] - 2024-01-02
 ### Fixed
+- fix `/tools/convert_series_list_cross_device.py` bug
 ### Added
 - add shell script `split_data.sh` for splitting data
 ### Changed
