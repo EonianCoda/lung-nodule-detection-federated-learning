@@ -28,7 +28,6 @@ class Stage1Dataset(Dataset):
         self.num_nodules = num_nodules
         
         self.mixed_precision = mixed_precision
-        self.dtype = np.float16 if self.mixed_precision else np.float32
         # Generate data pair for training or validating
         self.data_list = []
         self.series_data_list = []
@@ -118,7 +117,7 @@ class Stage1Dataset(Dataset):
         image = np.load(path, mmap_mode='c') # (h, w, c)
         image = image[..., start_slice_id: start_slice_id + self.depth]
         image = np.clip(image, HU_MIN, HU_MAX)
-        image = (image - HU_MIN).astype(self.dtype) / (HU_MAX - HU_MIN)
+        image = (image - HU_MIN).astype(np.float32) / (HU_MAX - HU_MIN)
         return image
 
     def augmentation(self, images: Union[List[np.ndarray], List[torch.Tensor]]) -> Union[List[np.ndarray], List[torch.Tensor]]:
