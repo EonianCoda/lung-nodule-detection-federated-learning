@@ -1,0 +1,1 @@
+python train_stage1.py --train_set pretrained_train.txt --val_set pretrained_val.txt --test_set client0_test.txt --extra_info pretrained_mixP --num_epoch 50 --mixed_precision --num_workers 4 --pin_memory

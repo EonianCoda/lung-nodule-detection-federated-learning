@@ -1,22 +1,37 @@
 import os
 import logging
-from typing import Dict
+from typing import Dict, List
+
 from torch.utils.data import DataLoader, Dataset
 import torch.nn as nn
 import torch
 
 from fl_modules.inference.predictor import PredictorStage1 
-from ..optimizer.losses import dice_log_loss
 from fl_modules.utilities import get_progress_bar
 from fl_modules.model.ema import EMA
+from .average_meter import AverageMeter
+from ..optimizer.losses import dice_log_loss
 
 logger = logging.getLogger(__name__)
 PRINT_EVERY = 1000
 
+def train_one_step(images: Dict[str, torch.Tensor], 
+                   model: nn.Module, 
+                   device: torch.device,
+                   loss_fn: nn.Module) -> List[torch.Tensor]:
+        
+        for key in images.keys():
+            images[key] = images[key].to(device, non_blocking = True)
+        
+        image, target512, target256 = images['image'], images['target512'], images['target256']
+        outputs512, outputs256 = model(image)
+        loss512 = loss_fn(target512, outputs512)
+        loss256 = loss_fn(target256, outputs256)
+        return loss512, loss256
+    
 def train(model: nn.Module, 
           dataloader: DataLoader,
           optimizer: torch.optim.Optimizer,
-          num_epoch: int, 
           device: torch.device,
           ema: EMA = None,
           enable_progress_bar = False,
@@ -29,74 +44,54 @@ def train(model: nn.Module,
     loss_weights = [2 / 3, 1 / 3]
     loss_fn = dice_log_loss()
     
-    running_loss512, running_loss256, running_total_loss = 0.0, 0.0, 0.0
-    
+    # Initialize scaler for mixed precision training
     if mixed_precision:
         scaler = torch.cuda.amp.GradScaler()
     
-    for epoch in range(num_epoch):
-        total_num_steps = len(dataloader)
-        
-        if enable_progress_bar:
-            progress_bar = get_progress_bar('Train', len(dataloader), epoch, num_epoch)
-        else:
-            progress_bar = None
-        running_loss512, running_loss256, running_total_loss = 0.0, 0.0, 0.0
-        
-        
-        for step, (inputs, target512, target256) in enumerate(dataloader):
-            if mixed_precision:
-                with torch.cuda.amp.autocast():
-                    inputs, target512, target256 = inputs.to(device, non_blocking = True), target512.to(device, non_blocking = True), target256.to(device, non_blocking = True)
-                    outputs512, outputs256 = model(inputs)
-                    loss512 = loss_fn(target512, outputs512)
-                    loss256 = loss_fn(target256, outputs256)
-                    loss = loss512 * loss_weights[0] + loss256 * loss_weights[1]
-                
-                # Update weights
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                inputs, target512, target256 = inputs.to(device, non_blocking = True), target512.to(device, non_blocking = True), target256.to(device, non_blocking = True)
-                outputs512, outputs256 = model(inputs)
-                # Calculate loss            
-                loss512 = loss_fn(target512, outputs512)
-                loss256 = loss_fn(target256, outputs256)
-                loss = loss512 * loss_weights[0] + loss256 * loss_weights[1]
-                
-                # Update weights
-                loss.backward()
-                optimizer.step()
-            optimizer.zero_grad()
-            
-            # Update EMA
-            if ema is not None:
-                ema.update()
-            # Log loss
-            running_loss512 = running_loss512 + loss512.item()
-            running_loss256 = running_loss256 + loss256.item()
-            running_total_loss = running_total_loss + loss.item()
-            
-            avg_loss512 = running_loss512 / (step + 1)
-            avg_loss256 = running_loss256 / (step + 1)
-            avg_total_loss = running_total_loss / (step + 1)
-            
-            if progress_bar is not None:
-                progress_bar.set_postfix(loss = avg_total_loss,
-                                        loss512 = avg_loss512,
-                                        loss256 = avg_loss256)
-                progress_bar.update()
-        if progress_bar is not None:
-            progress_bar.close()
-                
-    final_avg_loss512 = running_loss512 / total_num_steps
-    final_avg_loss256 = running_loss256 / total_num_steps
-    final_avg_total_loss = running_total_loss / total_num_steps
+    num_steps = len(dataloader)
+    progress_bar = get_progress_bar('Train', len(dataloader)) if enable_progress_bar else None
     
-    train_metrics = {'loss512': final_avg_loss512,
-                    'loss256': final_avg_loss256,
-                    'loss': final_avg_total_loss}
+    running_loss512, running_loss256, running_total_loss = AverageMeter(), AverageMeter(), AverageMeter()
+    for step, images in enumerate(dataloader):
+        # Update weights
+        if mixed_precision:
+            with torch.cuda.amp.autocast():
+                loss512, loss256 = train_one_step(images, model, device, loss_fn)
+                total_loss = loss_weights[0] * loss512 + loss_weights[1] * loss256
+            scaler.scale(total_loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss512, loss256 = train_one_step(images, model, device, loss_fn)
+            total_loss = loss_weights[0] * loss512 + loss_weights[1] * loss256
+            total_loss.backward()
+            optimizer.step()
+            
+        optimizer.zero_grad()
+        
+        # Update EMA
+        if ema is not None:
+            ema.update()
+        
+        # Log loss
+        n = images['image'].size(0)
+        running_loss512.update(loss512.item(), n)
+        running_loss256.update(loss256.item(), n)
+        running_total_loss.update(total_loss.item(), n)
+        
+        # Print loss
+        if progress_bar is not None:
+            progress_bar.set_postfix(loss = running_total_loss.avg,
+                                    loss512 = running_loss512.avg,
+                                    loss256 = running_loss256.avg)
+            progress_bar.update()
+            
+    if progress_bar is not None:
+        progress_bar.close()
+                
+    train_metrics = {'loss': running_total_loss.avg,
+                    'loss512': running_loss512.avg,
+                    'loss256': running_loss256.avg}
     
     if log_metric:
         for metric, value in train_metrics.items():

@@ -10,6 +10,8 @@
 - fix `/tools/convert_series_list_cross_device.py` bug
 ### Added
 - add shell script `split_data.sh` for splitting data
+- add `fl_modules/client/average_meter.py` for calculating average meter
+- add `scripts/train_stage1.sh` for training stage1
 ### Changed
 - when split data, normalize each dimension of feature to make the mean and std of each dimension to be 0 and 1 respectively
 ### Refactor

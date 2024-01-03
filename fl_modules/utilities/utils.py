@@ -75,17 +75,9 @@ def gen_log_level(level:str):
     else:
         raise ValueError("Should given valid log level")
     
-def get_progress_bar(identifer: str, 
-                     total_steps: int,
-                     epoch: int, 
-                     num_epochs: int):
-    progress_bar = tqdm(total = total_steps, 
-                        desc = "{:10s} Epoch {}/{}".format(identifer, epoch+1, num_epochs), 
-                        bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
-    return progress_bar
-
-def get_progress_bar_steps(identifer: str, 
-                            total_steps: int):
+def get_progress_bar(identifer: str, total_steps: int) -> tqdm:
+    """Get the progress bar
+    """
     progress_bar = tqdm(total = total_steps, 
                         desc = "{:10s}".format(identifer), 
                         bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')

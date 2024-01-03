@@ -166,21 +166,18 @@ if __name__ == '__main__':
                                     depth = 32,
                                     nodule_size_ranges = nodule_size_ranges,
                                     num_nodules = num_nodule_in_train_set,
-                                    mixed_precision = mixed_precision,
                                     series_list_path = train_set_path)
     
     val_dataset = Stage1Dataset(dataset_type = 'valid',
                                 depth = 32,
                                 nodule_size_ranges = nodule_size_ranges,
                                 num_nodules = num_nodule_in_val_set,
-                                mixed_precision = mixed_precision,
                                 series_list_path = val_set_path)
     
     test_dataset = Stage1Dataset(dataset_type = 'test',
                                 depth = 32,
                                 nodule_size_ranges = nodule_size_ranges,
                                 num_nodules = num_nodule_in_test_set,
-                                mixed_precision = mixed_precision,
                                 series_list_path = test_set_path)
 
     # Training
@@ -203,7 +200,6 @@ if __name__ == '__main__':
         train_metrics = train(model = model, 
                                 dataloader = train_dataloader, 
                                 optimizer = optimizer, 
-                                num_epoch = 1,
                                 mixed_precision = mixed_precision,
                                 device = device, 
                                 enable_progress_bar=True,

@@ -4,7 +4,7 @@ import random
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Union
 from scipy import ndimage
 
 from .utils import load_series_list, get_start_and_end_slice
@@ -26,6 +26,9 @@ class Stage1Dataset(Dataset):
         self.depth = depth
         self.stride = depth // 2
         self.num_nodules = num_nodules
+        
+        self.mixed_precision = mixed_precision
+        self.dtype = np.float16 if self.mixed_precision else np.float32
         # Generate data pair for training or validating
         self.data_list = []
         self.series_data_list = []
@@ -35,7 +38,6 @@ class Stage1Dataset(Dataset):
         
         self.series_nodule_slice_ids = []
         self.series_first_and_end_valid_slice = []
-        self.mixed_precision = mixed_precision
         for folder, file_name in load_series_list(series_list_path):
             series_path = os.path.join(folder, 
                         'npy', 
@@ -109,61 +111,44 @@ class Stage1Dataset(Dataset):
         """
         gt_mask = np.load(path)['image'] # (h, w, c)
         gt_mask = gt_mask[..., start_slice_id: start_slice_id + self.depth]
-        binary_masks = np.where(gt_mask > 125, 1., 0.)
+        binary_masks = np.where(gt_mask > 125, 1, 0)
         return binary_masks
     
     def load_image(self, path: str, start_slice_id: int) -> np.ndarray:
         image = np.load(path, mmap_mode='c') # (h, w, c)
         image = image[..., start_slice_id: start_slice_id + self.depth]
         image = np.clip(image, HU_MIN, HU_MAX)
-        image = image - HU_MIN
-        dtpye = np.float16 if self.mixed_precision else np.float32
-        image = image.astype(dtpye) / (HU_MAX - HU_MIN)
+        image = (image - HU_MIN).astype(self.dtype) / (HU_MAX - HU_MIN)
         return image
 
-    def augmentation(self, images: List[np.ndarray]) -> List[np.ndarray]:
+    def augmentation(self, images: Union[List[np.ndarray], List[torch.Tensor]]) -> Union[List[np.ndarray], List[torch.Tensor]]:
+        images = RandomFlipYXZ(p = 0.3)(images)
         return images
-        # images = RandomFlipYXZ(p = 0.3)(images)
-        # return images
 
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:
         """
-        Returns: A tuple of 3 tensors (image, target512, target256)
+        Returns: A dict of 3 tensors (image, target512, target256)
             image (torch.Tensor): (1, D, H, W)
             target512 (torch.Tensor): (1, D, H, W)
             target256 (torch.Tensor): (1, D, H, W)
         """
         image_path, mask_path, start_slice_id = self.data_list[index]
         image = self.load_image(image_path, start_slice_id)
-        target512 = self.load_gt_mask(mask_path, start_slice_id)
         
+        target512 = self.load_gt_mask(mask_path, start_slice_id)
         target256 = ndimage.zoom(target512, zoom=(1 / 2, 1 / 2, 1 / 2), mode="nearest", order=0)
 
-        # Convert to tensor
-        image = torch.from_numpy(image)
-        target512 = torch.from_numpy(target512)
-        target256 = torch.from_numpy(target256)
+        images = [image, target512, target256]
+        images = {'image': image, 'target512': target512, 'target256': target256}
+        for key in images:
+            # Convert to tensor
+            images[key] = torch.from_numpy(images[key]).half() if self.mixed_precision else torch.from_numpy(images[key]).float()
+            # Change dimension order from (H, W, D) to (1, D, H, W)
+            images[key] = images[key].permute((2, 0, 1)).unsqueeze(0)
         
         if self.dataset_type == 'train':
-            image, target512, target256 = RandomFlipYXZ(p = 0.3)([image, target512, target256])
-        
-        # Change dimension order from (H, W, D) to (D, H, W)
-        image = torch.permute(image, (2, 0, 1))
-        target512 = torch.permute(target512, (2, 0, 1))
-        target256 = torch.permute(target256, (2, 0, 1))
-        # Add channel dimension from (D, H, W) to (1, D, H, W)
-        image = torch.unsqueeze(image, 0)
-        target512 = torch.unsqueeze(target512, 0)
-        target256 = torch.unsqueeze(target256, 0)
-        
-        if self.mixed_precision:
-            target256 = target256.half()
-            target256 = target256.half()
-        else:
-            target256 = target256.float()
-            target512 = target512.float()
-        
-        return image, target512, target256
+            images = RandomFlipYXZ(p = 0.3)(images)
+        return images
     
     def __len__(self):
         return len(self.data_list)
