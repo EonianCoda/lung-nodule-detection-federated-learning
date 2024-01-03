@@ -60,9 +60,9 @@ class Stage1Dataset(Dataset):
             self.series_first_and_end_valid_slice.append(get_start_and_end_slice(lobe_info_path))
               
         self.offsets = list(range(-8, 8 + 1))
-        self.shuffle_data()
+        self.shuffle()
 
-    def shuffle_data(self):
+    def shuffle(self):
         self.series_data_list = []
         # Random generate data
         for i in range(len(self.series_paths)):

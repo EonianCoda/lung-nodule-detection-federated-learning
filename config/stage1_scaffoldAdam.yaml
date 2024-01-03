@@ -5,8 +5,8 @@ common:
   save_local_state: False
 
 server:
-  total_rounds: 40
-  best_model_metric_name: recall
+  total_rounds: 50
+  best_model_metric_name: f1_score
 
   model: 
     template: fl_modules.model.stage1.stage1_model.Stage1Model
@@ -30,18 +30,20 @@ server:
     train:
       template: fl_modules.client.stage1_logic.train
       params:
-        num_epoch: 1
-        batch_size: 1
+        num_workers: 12
+        mixed_precision: True
     val:
       template: fl_modules.client.stage1_logic.validation
       params:
         iou_threshold: 0.2
+        mixed_precision: True
     test:
       template: fl_modules.client.stage1_logic.test
       params:
         iou_threshold: 0.01
         nodule_3d_minimum_size: 5
         nodule_3d_minimum_thickness: 3
+        mixed_precision: False
 
   aggregation:
     optimizer_aggregate_strategy: continue_global # continue_global, continue_local, reset

@@ -1,4 +1,5 @@
 import os
+import shutil
 import argparse
 import logging
 
@@ -141,10 +142,29 @@ if __name__ == '__main__':
         else:
             ema = None
     
+    # Init best model
+    best_txt_path = os.path.join(exp_root, 'best.txt')
+    if os.path.exists(best_txt_path): # resume training
+        with open(best_txt_path, 'r') as f:
+            best_epoch = int(f.readline())
+            best_model_line = f.readline()
+            best_model_metric_name = best_model_line.split('=')[0]
+            best_metric = float(best_model_line.split('=')[1])
+    else:
+        best_epoch = 0
+        best_metric = 0.0
+    
     # Dataset path
     train_set_path = os.path.join(root, args.train_set)
     val_set_path = os.path.join(root, args.val_set)
     test_set_path = os.path.join(root, args.test_set)
+    
+    # Copy dataset txt to experiment folder
+    dataset_txt_folder = os.path.join(exp_root, 'dataset_txt')
+    os.makedirs(dataset_txt_folder, exist_ok=True)
+    for dataset_txt_path in [train_set_path, val_set_path, test_set_path]:
+        dataset_txt_name = os.path.basename(dataset_txt_path)
+        shutil.copy(dataset_txt_path, os.path.join(dataset_txt_folder, dataset_txt_name))
     
     # Number of Nodules
     nodule_counter = NoduleCounter()
@@ -182,20 +202,17 @@ if __name__ == '__main__':
 
     # Training
     writer = SummaryWriter(log_dir = os.path.join(exp_root, 'tensorboard'))
-    best_epoch = 0
-    best_metric = 0.0
-    last_best_txt = ''
-    
     train_dataloader = DataLoader(train_dataset, 
                                   batch_size = batch_size, 
                                   num_workers=num_workers,
                                   prefetch_factor = 1,
                                   pin_memory=pin_memory)
+    val_dataloader = DataLoader(val_dataset, batch_size = 1)
+    test_dataloader = DataLoader(test_dataset, batch_size = 1)
     
     model = model.to(device)
     for epoch in range(start_epoch, end_epoch):
         logger.info("Epoch {}/{}:".format(epoch + 1, end_epoch))
-        train_dataset.shuffle_data()
         # Train
         train_metrics = train(model = model, 
                                 dataloader = train_dataloader, 
@@ -216,16 +233,24 @@ if __name__ == '__main__':
                     save_path = os.path.join(saving_model_root, f'{epoch + 1}.pth'),
                     ema = ema)
         # Validating
-        val_metrics = validation(model, val_dataset, iou_threshold, device=device, enable_progress_bar=True,log_metric=True)
+        val_metrics = validation(model = model, 
+                                 dataloader = val_dataloader, 
+                                 iou_threshold = iou_threshold, 
+                                 device = device, 
+                                 enable_progress_bar = True,
+                                 log_metric = True)
         write_metrics(val_metrics, epoch, 'val', writer)
         metric = val_metrics[best_model_metric_name]
         if metric >= best_metric:
             best_metric = metric
             best_epoch = epoch + 1
             logger.info(f'Save best model in epoch {epoch + 1} for {best_model_metric_name} = {best_metric:.3f}')
-            with open(os.path.join(exp_root, 'best.txt'), 'w') as f:
+            with open(best_txt_path, 'w') as f:
                 f.write(f'{epoch + 1}\n')
                 f.write(f'{best_model_metric_name} = {best_metric:.3f}\n')
+                f.write('-' * 20 + '\n')
+                for metric, value in val_metrics.items():
+                    f.write(f'{metric} = {value:.3f}\n')
             save_states(model = model, 
                         optimizer = optimizer, 
                         save_path = os.path.join(exp_root, 'best.pth'),
@@ -245,19 +270,29 @@ if __name__ == '__main__':
     result_csv_path = os.path.join(exp_root, f'{exp_name}_thrs{test_iou_threshold:.2f}.csv')
     
     # Validating with validation set
-    stage1_results = test(model, test_dataset, test_iou_threshold, test_nodule_3d_minimum_size, device = device)
+    stage1_results = test(model = model,
+                          dataloader = val_dataloader,
+                          iou_threshold = test_iou_threshold, 
+                          nodule_3d_minimum_size = test_nodule_3d_minimum_size, 
+                          device = device, 
+                          log_metric = True)
     write_lines(result_csv_path, 'iou_threshold,val_txt_path')
     write_lines(result_csv_path, '{:.2f},{}'.format(test_iou_threshold, val_set_path))
     nodule_metrics = NoduleMetrics(stage1_results)
     write_lines(result_csv_path, nodule_metrics.generate_metric_csv_lines())
     
     # Validating with test set
-    stage1_results = test(model, test_dataset, test_iou_threshold, test_nodule_3d_minimum_size, device = device)
+    stage1_results = test(model = model,
+                          dataloader = test_dataloader,
+                          iou_threshold = test_iou_threshold, 
+                          nodule_3d_minimum_size = test_nodule_3d_minimum_size, 
+                          device = device, 
+                          log_metric = True)
     write_lines(result_csv_path, 'iou_threshold,val_txt_path')
     write_lines(result_csv_path, '{:.2f},{}'.format(test_iou_threshold, test_set_path))
     nodule_metrics = NoduleMetrics(stage1_results)
     write_lines(result_csv_path, nodule_metrics.generate_metric_csv_lines())
     
     # Write metrics to tensorboard
-    write_metrics(stage1_results['all'], epoch, 'test', writer)
+    write_metrics(stage1_results['all'], 0, 'test', writer)
     writer.close()

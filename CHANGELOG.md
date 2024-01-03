@@ -12,6 +12,8 @@
 - add shell script `split_data.sh` for splitting data
 - add `fl_modules/client/average_meter.py` for calculating average meter
 - add `scripts/train_stage1.sh` for training stage1
+- revised `train_stage1.py` to support resume training and resume best model
+- add mixed precision validation
 ### Changed
 - when split data, normalize each dimension of feature to make the mean and std of each dimension to be 0 and 1 respectively
 ### Refactor

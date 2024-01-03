@@ -6,6 +6,8 @@ import logging
 from typing import List, Dict, Any
 
 import torch
+from torch.utils.data import DataLoader
+
 from fl_modules.utilities import build_instance, write_yaml
 from fl_modules.inference.nodule_counter import NoduleCounter
 logger = logging.getLogger(__name__)
@@ -71,7 +73,13 @@ class Client:
         # Lazy initialize dataset
         if self.train_config.get('dataset', None) == None:
             self.train_set = build_instance(self.client_config['dataset']['template'], self.dataset_config['train'])
-            self.train_config['dataset'] = self.train_set
+            self.train_data_loader = DataLoader(self.train_set, 
+                                                batch_size = self.train_config.get('batch_size', 1),
+                                                shuffle = False,
+                                                prefetch_factor = 1, 
+                                                num_workers = self.train_config.get('num_workers', 0),
+                                                pin_memory = True)
+            self.train_config['dataloader'] = self.train_data_loader
         
         self.train_config['model'] = model
         self.train_config['optimizer'] = optimizer
@@ -86,7 +94,16 @@ class Client:
         # Lazy initialize dataset
         if self.val_config.get('dataset', None) == None:
             self.val_set = build_instance(self.client_config['dataset']['template'], self.dataset_config['val'])
-            self.val_config['dataset'] = self.val_set
+            batch_size = self.val_config.get('batch_size', 1)
+            num_workers = self.val_config.get('num_workers', 0)
+            prefetch_factor = None if num_workers == 0 else 1
+            self.val_data_loader = DataLoader(self.val_set, 
+                                              batch_size = batch_size,
+                                              shuffle = False,
+                                              num_workers = num_workers,
+                                              prefetch_factor = prefetch_factor,
+                                              pin_memory = True)
+            self.val_config['dataloader'] = self.val_data_loader
             
         self.val_config['model'] = model
         val_metrics = self.val_fn(**self.val_config)
@@ -101,7 +118,16 @@ class Client:
         # Lazy initialize dataset
         if self.test_config.get('dataset', None) == None:
             self.test_set = build_instance(self.client_config['dataset']['template'], self.dataset_config['test'])
-            self.test_config['dataset'] = self.test_set
+            batch_size = self.test_config.get('batch_size', 1)
+            num_workers = self.test_config.get('num_workers', 0)
+            prefetch_factor = None if num_workers == 0 else 1
+            self.test_data_loader = DataLoader(self.test_set, 
+                                                batch_size = batch_size,
+                                               shuffle = False,
+                                               num_workers = num_workers,
+                                                prefetch_factor = prefetch_factor,
+                                               pin_memory = True)
+            self.test_config['dataloader'] = self.test_data_loader
             
         self.test_config['model'] = model
         test_metrics = self.test_fn(**self.test_config)

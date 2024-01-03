@@ -1,26 +1,26 @@
 COA:
   dataset_params:
     train:
-      series_list_path: '/disk/HDD1/FL/openfl_system_inference_test/fl_cmp_trainA.txt'
+      series_list_path: './data/lung_nodule/client0_train.txt'
     val:
-      series_list_path: '/disk/HDD1/FL/openfl_system_inference_test/fl_cmp_valA.txt'
+      series_list_path: './data/lung_nodule/client0_val.txt'
     test:
-      series_list_path: '/disk/HDD1/FL/openfl_system_inference_test/fl_cmp_testA.txt'
+      series_list_path: './data/lung_nodule/client0_test.txt'
 
 COB:
   dataset_params:
     train:
-      series_list_path: '/disk/HDD1/FL/openfl_system_inference_test/fl_cmp_trainB.txt'
+      series_list_path: './data/lung_nodule/client1_train.txt'
     val:
-      series_list_path: '/disk/HDD1/FL/openfl_system_inference_test/fl_cmp_valB.txt'
+      series_list_path: './data/lung_nodule/client1_val.txt'
     test:
-      series_list_path: '/disk/HDD1/FL/openfl_system_inference_test/fl_cmp_testB.txt'
+      series_list_path: './data/lung_nodule/client1_test.txt'
 
 COC:
   dataset_params:
     train:
-      series_list_path: '/disk/HDD1/FL/openfl_system_inference_test/fl_cmp_trainC.txt'
+      series_list_path: './data/lung_nodule/client2_train.txt'
     val:
-      series_list_path: '/disk/HDD1/FL/openfl_system_inference_test/fl_cmp_valC.txt'
+      series_list_path: './data/lung_nodule/client2_val.txt'
     test:
-      series_list_path: '/disk/HDD1/FL/openfl_system_inference_test/fl_cmp_testC.txt'
+      series_list_path: './data/lung_nodule/client2_test.txt'

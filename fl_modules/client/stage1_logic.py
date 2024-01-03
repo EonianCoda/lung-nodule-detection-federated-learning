@@ -36,7 +36,8 @@ def train(model: nn.Module,
           ema: EMA = None,
           enable_progress_bar = False,
           mixed_precision = True,
-          log_metric = False) -> Dict[str, float]:
+          log_metric = False,
+          **kwargs) -> Dict[str, float]:
     
     model.train()
     optimizer.zero_grad()
@@ -48,10 +49,9 @@ def train(model: nn.Module,
     if mixed_precision:
         scaler = torch.cuda.amp.GradScaler()
     
-    num_steps = len(dataloader)
     progress_bar = get_progress_bar('Train', len(dataloader)) if enable_progress_bar else None
-    
     running_loss512, running_loss256, running_total_loss = AverageMeter(), AverageMeter(), AverageMeter()
+    dataloader.dataset.shuffle()
     for step, images in enumerate(dataloader):
         # Update weights
         if mixed_precision:
@@ -99,18 +99,20 @@ def train(model: nn.Module,
     return train_metrics
     
 def validation(model: nn.Module, 
-               dataset: Dataset,
+               dataloader: DataLoader,
                iou_threshold: float = 0.01,
                device: torch.device = torch.device('cpu'),
-               batch_size = 64,
-               enable_progress_bar = False,
-               log_metric = False) -> Dict[str, float]:
+               mixed_precision = False,
+               log_metric = False,
+               **kwargs) -> Dict[str, float]:
     model.eval()
+    dataset = dataloader.dataset
     series_paths = dataset.series_paths
     gt_mask_maps_paths = dataset.gt_mask_maps_paths
     predictor = PredictorStage1(model, 
                                 use_lobe = True, 
                                 iou_threshold = iou_threshold, 
+                                mixed_precision = mixed_precision,
                                 device = device, 
                                 log_metrics = log_metric)
     val_metrics = predictor.get_recall_precision_of_nodules_in_series(series_paths, gt_mask_maps_paths)
@@ -123,15 +125,16 @@ def validation(model: nn.Module,
     return val_metrics
 
 def test(model: nn.Module, 
-         dataset: Dataset,
+        dataloader: DataLoader,
          iou_threshold: float = 0.01,
          nodule_3d_minimum_thickness: int = 3,
          nodule_3d_minimum_size: int = 5,
          device: torch.device = torch.device('cpu'),
-         batch_size = 64,
-         enable_progress_bar = False,
-         log_metric = False) -> Dict[str, float]:
+         mixed_precision = False,
+         log_metric = False,
+         **kwargs) -> Dict[str, float]:
     model.eval()
+    dataset = dataloader.dataset
     series_paths = dataset.series_paths
     gt_mask_maps_paths = dataset.gt_mask_maps_paths
     predictor = PredictorStage1(model, 
@@ -140,6 +143,7 @@ def test(model: nn.Module,
                                 nodule_3d_minimum_thickness = nodule_3d_minimum_thickness,
                                 nodule_3d_minimum_size = nodule_3d_minimum_size,
                                 device = device, 
+                                mixed_precision = mixed_precision,
                                 log_metrics = log_metric)
     test_metrics = predictor.get_recall_precision_of_nodules_in_series(series_paths, gt_mask_maps_paths)
     

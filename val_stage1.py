@@ -8,6 +8,8 @@ import re
 from typing import List, Union
 
 import torch
+from torch.utils.data import DataLoader
+
 from fl_modules.dataset.stage1_dataset import Stage1Dataset
 from fl_modules.client.stage1_logic import test
 
@@ -48,6 +50,7 @@ def get_parser():
     parser.add_argument('--model_path', type=str, default='auto')
     parser.add_argument('--model', default='fl_modules.model.stage1.stage1_model.Stage1Model')
     parser.add_argument('--result_save_path', type=str, default='')
+    parser.add_argument('--mixed_precision', action='store_true', default=False)
     args = parser.parse_args()
     return args
 
@@ -66,6 +69,7 @@ if __name__ == '__main__':
     nodule_3d_minimum_size = args.nodule_3d_minimum_size
     model_path = args.model_path
     result_save_path = args.result_save_path
+    mixed_precision = args.mixed_precision
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     if model_path == 'auto':
@@ -96,17 +100,24 @@ if __name__ == '__main__':
                                 nodule_size_ranges = nodule_size_ranges,
                                 num_nodules = num_nodule_in_val_set,
                                 series_list_path = val_set_path)
-    
+    val_dataloder = DataLoader(val_dataset, batch_size = 1)
     if result_save_path == '':
         result_save_path = os.path.join(os.path.dirname(os.path.dirname(model_path)), 'result.csv')
     if not result_save_path.endswith('.csv'):
         result_save_path = result_save_path + '.csv'
     result_csv_path = result_save_path.replace('.csv', '_thrs{:.2f}.csv'.format(iou_threshold))
+    if mixed_precision:
+        result_csv_path = result_csv_path.replace('.csv', '_mixPVal.csv')
     
     logger.info('Validating with iou_threshold = {:.2f}'.format(iou_threshold))
     logger.info("Saving result to '{}'".format(result_csv_path))
     # Validating
-    stage1_results = test(model, val_dataset, iou_threshold, device = device, log_metric = True)
+    stage1_results = test(model = model, 
+                          dataloader=val_dataloder,
+                          iou_threshold=iou_threshold,
+                          device = device, 
+                          log_metric = True, 
+                          mixed_precision = mixed_precision)
     write_lines(result_csv_path, 'iou_threshold,val_txt_path')
     write_lines(result_csv_path, '{:.2f},{}'.format(iou_threshold, val_set_path))
     nodule_metrics = NoduleMetrics(stage1_results)

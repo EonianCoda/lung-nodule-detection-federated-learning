@@ -173,6 +173,7 @@ class PredictorStage1(object):
                 use_lobe: bool = True,
                 iou_mode: str = 'pixel',
                 log_metrics: bool = True,
+                mixed_precision: bool = False,
                 augmented_inference: bool = False):
         """Predictor of Stage1
 
@@ -188,6 +189,12 @@ class PredictorStage1(object):
                 The threshold to decide foreground in the result of prediction, probability > threshold => foreground
             iou_threshold: float, default=0.01
                 A threshold of deciding a nodule of prediction is true positive or false positive
+                
+            mixed_precision: bool
+                A flag for whether using mixed precision validation or not, default is False.
+            augmented_inference: bool
+                A flag for whether using augmented_inference or not, default is False.
+                
         """
         assert(foreground_threshold <= 1 and foreground_threshold >= 0)
         assert(iou_threshold <= 1 and iou_threshold > 0)
@@ -227,6 +234,7 @@ class PredictorStage1(object):
         self.iou_mode = iou_mode
         self.log_metrics = log_metrics
         
+        self.mixed_precision = mixed_precision
         self.num_workers = max(os.cpu_count() // 4, 2)
         
     def get_bboxes_of_nodules_in_series(self, series_path: str) -> List[List[Tuple[int, int, int, int, int]]]:
@@ -658,7 +666,13 @@ class PredictorStage1(object):
 
         # do model predict
         for start_slice_id, series_part_data in SeriesSlicesGenerator(series_image, self.device, self.depth, first_slice_of_lobe, last_slice_of_lobe):
-            pred_mask_maps = self.predict_nodule_in_slices(series_part_data)
+            if self.mixed_precision:
+                with torch.cuda.amp.autocast():
+                    pred_mask_maps = self.predict_nodule_in_slices(series_part_data)
+                pred_mask_maps = pred_mask_maps.float()
+            else:
+                pred_mask_maps = self.predict_nodule_in_slices(series_part_data)
+                
             prediction_processor.process_mask_maps(pred_mask_maps, start_slice_id)
         
         if not self.augmented_inference:
