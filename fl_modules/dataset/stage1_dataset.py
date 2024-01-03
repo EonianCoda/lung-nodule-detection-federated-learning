@@ -18,8 +18,7 @@ class Stage1Dataset(Dataset):
                 nodule_size_ranges: Dict[str, Tuple[int, int]],
                 num_nodules: Dict[str, int],
                 series_list_path: str,
-                depth: int,
-                mixed_precision = False):
+                depth: int):
         super(Stage1Dataset, self).__init__()
         self.dataset_type = dataset_type
         self.nodule_size_ranges = nodule_size_ranges
@@ -27,7 +26,6 @@ class Stage1Dataset(Dataset):
         self.stride = depth // 2
         self.num_nodules = num_nodules
         
-        self.mixed_precision = mixed_precision
         # Generate data pair for training or validating
         self.data_list = []
         self.series_data_list = []
@@ -140,8 +138,7 @@ class Stage1Dataset(Dataset):
         images = [image, target512, target256]
         images = {'image': image, 'target512': target512, 'target256': target256}
         for key in images:
-            # Convert to tensor
-            images[key] = torch.from_numpy(images[key]).half() if self.mixed_precision else torch.from_numpy(images[key]).float()
+            images[key] = torch.from_numpy(images[key]).float()
             # Change dimension order from (H, W, D) to (1, D, H, W)
             images[key] = images[key].permute((2, 0, 1)).unsqueeze(0)
         
