@@ -83,7 +83,7 @@ if __name__ == '__main__':
     test_iou_threshold = args.test_iou_threshold
     test_nodule_3d_minimum_size = args.test_nodule_3d_minimum_size
     num_epoch = args.num_epoch
-    learning_rate = args.lr
+    learning_rate = args.lr * batch_size
     apply_ema = args.apply_ema
     resume_model_path = args.resume_model_path
     best_model_metric_name = args.best_model_metric_name
