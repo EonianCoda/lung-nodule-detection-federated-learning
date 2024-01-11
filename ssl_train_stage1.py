@@ -8,7 +8,7 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
 from fl_modules.client.stage1_logic import train, validation, test
-from fl_modules.dataset.stage1_dataset import Stage1Dataset
+from fl_modules.dataset import Stage1Dataset
 from fl_modules.model.ema import EMA
 
 from fl_modules.inference.nodule_counter import NoduleCounter

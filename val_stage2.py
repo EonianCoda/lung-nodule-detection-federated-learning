@@ -8,7 +8,7 @@ import re
 from typing import List, Union
 
 import torch
-from fl_modules.dataset.stage2_dataset import Stage2Dataset
+from fl_modules.dataset import Stage2Dataset
 from fl_modules.client.stage2_logic import test
 
 from fl_modules.inference.nodule_counter import NoduleCounter

@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from fl_modules.client.stage1_logic import train, validation, test
-from fl_modules.dataset.stage1_dataset import Stage1Dataset
+from fl_modules.dataset import Stage1Dataset
 from fl_modules.model.ema import EMA
 
 from fl_modules.inference.nodule_counter import NoduleCounter
@@ -148,7 +148,7 @@ if __name__ == '__main__':
         with open(best_txt_path, 'r') as f:
             best_epoch = int(f.readline())
             best_model_line = f.readline()
-            best_model_metric_name = best_model_line.split('=')[0]
+            best_model_metric_name = best_model_line.split('=')[0].strip()
             best_metric = float(best_model_line.split('=')[1])
     else:
         best_epoch = 0
