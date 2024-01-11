@@ -57,6 +57,7 @@ if __name__ == '__main__':
     # Save config
     write_yaml(join(exp_folder, 'experiment_config.yaml'), config, default_flow_style = None)
     write_yaml(join(exp_folder, 'clients_config.yaml'), load_yaml(clients_config_path), default_flow_style = None)
+    write_yaml(join(exp_folder, vars(args), default_flow_style = None))
     # Build server
     server = Server(config = config, 
                     clients_config = clients_config,
