@@ -5,6 +5,10 @@
 ## Unreleased
 ### Main Feature
 - add semi supervised learning(ssl) training
+## [1.0.3]
+### Fixed
+### Changed
+
 ## [1.0.2] - 2024-01-02
 ### Fixed
 - fix `/tools/convert_series_list_cross_device.py` bug

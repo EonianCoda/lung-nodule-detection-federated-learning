@@ -32,9 +32,9 @@ co_name = training_config['envoy']['shard_name']
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--extra_info', default = '')
-    parser.add_argument('--train_set', default = 'fl_cmp_trainABC.txt')
-    parser.add_argument('--val_set', default = 'fl_cmp_valABC.txt')
-    parser.add_argument('--test_set', default = 'val.txt')
+    parser.add_argument('--train_set', default = 'pretrained_train.txt')
+    parser.add_argument('--val_set', default = 'pretrained_val.txt')
+    parser.add_argument('--test_set', nargs='+', type=str, default=['client0_test.txt', 'client1_test.txt', 'client2_test.txt'])
     parser.add_argument('--batch_size', type = int, default = 1)
     parser.add_argument('--num_epoch', type = int, default = 50)
     parser.add_argument('--iou_threshold', type = float, default = 0.2)
@@ -157,12 +157,19 @@ if __name__ == '__main__':
     # Dataset path
     train_set_path = os.path.join(root, args.train_set)
     val_set_path = os.path.join(root, args.val_set)
-    test_set_path = os.path.join(root, args.test_set)
+    
+    test_set_paths = []
+    for i in range(len(args.test_set)):
+        test_set_paths.append(os.path.join(root, args.test_set[i]))
     
     # Copy dataset txt to experiment folder
     dataset_txt_folder = os.path.join(exp_root, 'dataset_txt')
     os.makedirs(dataset_txt_folder, exist_ok=True)
-    for dataset_txt_path in [train_set_path, val_set_path, test_set_path]:
+    dataset_txt_paths = []
+    dataset_txt_paths.append(train_set_path)
+    dataset_txt_paths.append(val_set_path)
+    dataset_txt_paths.extend(test_set_paths)
+    for dataset_txt_path in dataset_txt_paths:
         dataset_txt_name = os.path.basename(dataset_txt_path)
         shutil.copy(dataset_txt_path, os.path.join(dataset_txt_folder, dataset_txt_name))
     
@@ -170,7 +177,9 @@ if __name__ == '__main__':
     nodule_counter = NoduleCounter()
     num_nodule_in_train_set = nodule_counter.count_and_analyze_nodules_of_multi_series(train_set_path, nodule_size_ranges)
     num_nodule_in_val_set = nodule_counter.count_and_analyze_nodules_of_multi_series(val_set_path, nodule_size_ranges)
-    num_nodule_in_test_set = nodule_counter.count_and_analyze_nodules_of_multi_series(test_set_path, nodule_size_ranges)
+    num_nodule_in_test_sets = []
+    for test_set_path in test_set_paths:
+        num_nodule_in_test_sets.append(nodule_counter.count_and_analyze_nodules_of_multi_series(test_set_path, nodule_size_ranges))
 
     saving_model_root = os.path.join(exp_root, 'model')
     log_txt_path = os.path.join(exp_root, 'log.txt')
@@ -194,11 +203,15 @@ if __name__ == '__main__':
                                 num_nodules = num_nodule_in_val_set,
                                 series_list_path = val_set_path)
     
-    test_dataset = Stage1Dataset(dataset_type = 'test',
-                                depth = 32,
-                                nodule_size_ranges = nodule_size_ranges,
-                                num_nodules = num_nodule_in_test_set,
-                                series_list_path = test_set_path)
+    test_datasets = []
+    for i in range(len(test_set_paths)):
+        test_set_path = test_set_paths[i]
+        num_nodule_in_test_set = num_nodule_in_test_sets[i]
+        test_datasets.append(Stage1Dataset(dataset_type = 'test',
+                                            depth = 32,
+                                            nodule_size_ranges = nodule_size_ranges,
+                                            num_nodules = num_nodule_in_test_set,
+                                            series_list_path = test_set_path))
 
     # Training
     writer = SummaryWriter(log_dir = os.path.join(exp_root, 'tensorboard'))
@@ -208,7 +221,6 @@ if __name__ == '__main__':
                                   prefetch_factor = 1,
                                   pin_memory=pin_memory)
     val_dataloader = DataLoader(val_dataset, batch_size = 1)
-    test_dataloader = DataLoader(test_dataset, batch_size = 1)
     
     model = model.to(device)
     for epoch in range(start_epoch, end_epoch):
@@ -223,7 +235,7 @@ if __name__ == '__main__':
                                 log_metric=True,
                                 ema = ema)
         write_metrics(train_metrics, epoch, 'train', writer)
-        
+        scheduler.step()
         # Use Shadow model to validate and save model
         if ema is not None:
             ema.apply_shadow()
@@ -282,16 +294,21 @@ if __name__ == '__main__':
     write_lines(result_csv_path, nodule_metrics.generate_metric_csv_lines())
     
     # Validating with test set
-    stage1_results = test(model = model,
-                          dataloader = test_dataloader,
-                          iou_threshold = test_iou_threshold, 
-                          nodule_3d_minimum_size = test_nodule_3d_minimum_size, 
-                          device = device, 
-                          log_metric = True)
-    write_lines(result_csv_path, 'iou_threshold,val_txt_path')
-    write_lines(result_csv_path, '{:.2f},{}'.format(test_iou_threshold, test_set_path))
-    nodule_metrics = NoduleMetrics(stage1_results)
-    write_lines(result_csv_path, nodule_metrics.generate_metric_csv_lines())
+    for i in range(len(test_set_paths)):
+        test_set_path = test_set_paths[i]
+        test_dataset = test_datasets[i]
+        test_dataloader = DataLoader(test_dataset, batch_size = 1)
+        
+        stage1_results = test(model = model,
+                            dataloader = test_dataloader,
+                            iou_threshold = test_iou_threshold, 
+                            nodule_3d_minimum_size = test_nodule_3d_minimum_size, 
+                            device = device, 
+                            log_metric = True)
+        write_lines(result_csv_path, 'iou_threshold,val_txt_path')
+        write_lines(result_csv_path, '{:.2f},{}'.format(test_iou_threshold, test_set_path))
+        nodule_metrics = NoduleMetrics(stage1_results)
+        write_lines(result_csv_path, nodule_metrics.generate_metric_csv_lines())
     
     # Write metrics to tensorboard
     write_metrics(stage1_results['all'], 0, 'test', writer)

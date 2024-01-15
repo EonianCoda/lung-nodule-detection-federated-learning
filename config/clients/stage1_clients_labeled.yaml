@@ -1,0 +1,26 @@
+COA:
+  dataset_params:
+    train:
+      series_list_path: './data/lung_nodule/client0_labeled_train.txt'
+    val:
+      series_list_path: './data/lung_nodule/client0_val.txt'
+    test:
+      series_list_path: './data/lung_nodule/client0_test.txt'
+
+COB:
+  dataset_params:
+    train:
+      series_list_path: './data/lung_nodule/client1_labeled_train.txt'
+    val:
+      series_list_path: './data/lung_nodule/client1_val.txt'
+    test:
+      series_list_path: './data/lung_nodule/client1_test.txt'
+
+COC:
+  dataset_params:
+    train:
+      series_list_path: './data/lung_nodule/client2_labeled_train.txt'
+    val:
+      series_list_path: './data/lung_nodule/client2_val.txt'
+    test:
+      series_list_path: './data/lung_nodule/client2_test.txt'
