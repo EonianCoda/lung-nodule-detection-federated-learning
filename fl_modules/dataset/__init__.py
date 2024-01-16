@@ -1,2 +1,2 @@
-from .stage1_dataset import Stage1Dataset
+from .stage1_dataset_more_slices import Stage1Dataset
 from .stage2_dataset import Stage2Dataset

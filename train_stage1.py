@@ -235,7 +235,6 @@ if __name__ == '__main__':
                                 log_metric=True,
                                 ema = ema)
         write_metrics(train_metrics, epoch, 'train', writer)
-        scheduler.step()
         # Use Shadow model to validate and save model
         if ema is not None:
             ema.apply_shadow()
