@@ -58,6 +58,8 @@ client:
   dataset:
     template: fl_modules.dataset.stage2_dataset.Stage2Dataset
     params:
-      crop_setting: 
-        crop_shape: [40, 40, 30] # (y, x, z)
-        final_shape: [40, 40, 30] # (y, x, z)
+      crop_settings: # (y, x, z)
+        large_shape:  [80, 80, 30]
+        medium_shape: [60, 60, 20]
+        small_shape:  [40, 40, 10]
+        final_shape:  [80, 80, 30, 1]

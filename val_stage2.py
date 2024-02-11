@@ -97,7 +97,7 @@ if __name__ == '__main__':
                                 nodule_size_ranges = nodule_size_ranges,
                                 num_nodules = num_nodule_in_val_set,
                                 series_list_path = val_set_path,
-                                crop_setting = fl_config['client']['dataset']['params']['crop_setting'],
+                                crop_settings = fl_config['client']['dataset']['params']['crop_setting'],
                                 cache_folder = cache_folder,
                                 reset_data_in_disk = True)
     

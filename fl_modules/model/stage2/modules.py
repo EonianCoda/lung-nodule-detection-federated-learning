@@ -1,107 +1,75 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-def conv1x1(in_planes: int, out_planes: int, strides = 1, groups = 1, dilation = 1, bias=  False):
-    return nn.Conv3d(in_planes, out_planes, kernel_size = 1, stride = strides, padding = 0, groups = groups, bias = bias, dilation = dilation)
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, dilation=1, stride=1, groups=1):
+        super(ConvBlock, self).__init__()
 
-class EcaLayer(nn.Module):
-    """Constructs a ECA module.
+        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, groups=groups,
+                              padding=kernel_size // 2 + dilation - 1, dilation=dilation, bias=False)
+        self.bn = nn.BatchNorm3d(out_channels)
+        self.relu = nn.ReLU()
 
-    Args:
-        k_size: Adaptive selection of kernel size
-    """
-    def __init__(self, k_size:int = 3, shortcut = False):
-        super(EcaLayer, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool3d(1)
-        self.conv = nn.Conv1d(1, 1, kernel_size=k_size, padding = 'same', bias=False) 
-        self.sigmoid = nn.Sigmoid()
-
-        self.shortcut = shortcut
     def forward(self, x):
-        y = self.avg_pool(x) # (N, C, 1, 1, 1)
-        y = torch.flatten(y, 1).unsqueeze(-1) # (N, C, 1)
-        y = y.transpose(-1, -2) # (N, 1, C)
-        y = self.conv(y) # (N, 1, C)
-        y = y.transpose(-1, -2).unsqueeze(-1).unsqueeze(-1) # (N, C, 1, 1, 1)
-        
-        y = self.sigmoid(y)
-        if self.shortcut:
-            return x * y + x
-        else:
-            return x * y
-
-class ConvBlock3D(nn.Module):
-    def __init__(self, in_planes: int, out_planes: int, kernel_size = 3, stride = 1, padding = 'same', activation = True, normalization = 'instance', bias = True):
-        super(ConvBlock3D, self).__init__()
-        if stride != 1 and padding == 'same':
-            padding = (kernel_size - 1) // 2
-        self.conv3d = nn.Conv3d(in_planes, out_planes, kernel_size, stride, padding, bias = bias)
-        self.activation = nn.ReLU() if activation else None
-        self.normalization = normalization
-
-        if self.normalization == 'instance':
-            self.norm_layer = nn.InstanceNorm3d(out_planes)
-        elif self.normalization == 'instance_affine':
-            self.norm_layer = nn.InstanceNorm3d(out_planes, affine = True)
-        elif self.normalization == 'batch':
-            self.norm_layer = nn.BatchNorm3d(out_planes)
-        elif 'group' in self.normalization:
-            num_groups = int(self.normalization.split('_')[-1])
-            self.norm_layer = nn.GroupNorm(num_groups, out_planes)
-        else:
-            raise ValueError('Invalid normalization type {}'.format(self.normalization))
-        
-    def forward(self, x):
-        x = self.conv3d(x)
-
-        if self.norm_layer is not None:
-            x = self.norm_layer(x)
-
-        if self.activation:
-            x = self.activation(x)
-
+        x = self.conv(x)
+        x = self.bn(x)
+        x = self.relu(x)
         return x
 
-class ResBlock3D(nn.Module):
-    def __init__(self, 
-                 in_planes: int, 
-                 out_planes: int, 
-                 strides = 1, 
-                 normalization = 'instance',
-                 bias = True, 
-                 attn_block = None):
-        """
-        Args:
-            normlization: 'instance' or 'batch'
-        """
-        super(ResBlock3D, self).__init__()
-        self.conv1 = ConvBlock3D(in_planes, out_planes, stride = strides, normalization = normalization, bias = bias)
-        self.conv2 = ConvBlock3D(out_planes, out_planes, normalization = normalization, bias = bias)
-        self.strides = strides
+class ChannelAttention(nn.Module):
+    def __init__(self, in_channels, ratio):
+        super(ChannelAttention, self).__init__()
+        self.mlp_layer1 = nn.Sequential(nn.Linear(in_channels, in_channels // ratio), 
+                                        nn.ReLU())
+        
+        self.mlp_layer2 = nn.Sequential(nn.Linear(in_channels // ratio, in_channels),
+                                        nn.ReLU())
+                                        
+        self.avg_pool = nn.AdaptiveAvgPool3d(1)
+        self.max_pool = nn.AdaptiveMaxPool3d(1)
+        
+        self.flatten = nn.Flatten()
+        self.sigmoid = nn.Sigmoid()
+        
+    def forward(self, x):
+        avg_feat = self.flatten(self.avg_pool(x))
+        avg_feat = self.mlp_layer1(avg_feat)
+        avg_feat = self.mlp_layer2(avg_feat) 
+        
+        max_feat = self.flatten(self.max_pool(x))
+        max_feat = self.mlp_layer1(max_feat)
+        max_feat = self.mlp_layer2(max_feat)
+        
+        feat_combined = avg_feat + max_feat
+        feat_combined = self.sigmoid(feat_combined)
+        
+        return feat_combined * x
 
-        if attn_block is not None:
-            self.attn_block = attn_block()
-        else:
-            self.attn_block = None
-        if strides != 1 or in_planes != out_planes:
-            self.identity = conv1x1(in_planes, out_planes, strides = strides, bias=True)
-        else:
-            self.identity = None
+class SpatialAttention(nn.Module):
+    def __init__(self):
+        super(SpatialAttention, self).__init__()
+        self.conv = nn.Conv3d(in_channels=2, out_channels=1, kernel_size=7, stride=1, padding=3, bias=False)
+
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        identity = x
+        avg_feature = torch.mean(x, dim=1, keepdim=True)
+        max_feature, _ = torch.max(x, dim=1, keepdim=True)
 
-        conv = self.conv1(x)
-        conv = self.conv2(conv)
+        feature_combined = torch.cat([avg_feature, max_feature], dim=1)
+        feature_combined = self.conv(feature_combined)
+        feature_combined = self.sigmoid(feature_combined)
 
-        # Attention block
-        if self.attn_block is not None:
-            conv = self.attn_block(conv)
-            
-        # Shortcut connection
-        if self.identity is not None:
-            identity = self.identity(identity)
-            conv = conv + identity
-            
-        return conv
+        return x * feature_combined
+
+class CBAM(nn.Module):
+    def __init__(self, in_channels, ratio=16):
+        super(CBAM, self).__init__()
+        self.channel_attention = ChannelAttention(in_channels, ratio)
+        self.spatial_attention = SpatialAttention()
+
+    def forward(self, x):
+        channel_feat_refined = self.channel_attention(x)
+        final_feat_refined = self.spatial_attention(channel_feat_refined)
+
+        return final_feat_refined

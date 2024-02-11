@@ -133,10 +133,11 @@ class Stage1Dataset(Dataset):
         image = self.load_image(image_path, start_slice_id)
         
         target512 = self.load_gt_mask(mask_path, start_slice_id)
-        target256 = ndimage.zoom(target512, zoom=(1 / 2, 1 / 2, 1 / 2), mode="nearest", order=0)
+        target256 = ndimage.zoom(target512, zoom=1 / 2, mode="nearest", order=0)
 
-        images = [image, target512, target256]
-        images = {'image': image, 'target512': target512, 'target256': target256}
+        images = {'image': image,
+                  'target512': target512,
+                  'target256': target256}
         for key in images:
             images[key] = torch.from_numpy(images[key]).float()
             # Change dimension order from (H, W, D) to (1, D, H, W)

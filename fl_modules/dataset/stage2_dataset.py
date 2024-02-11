@@ -1,22 +1,20 @@
 import os
-from os.path import join
 import shutil
 import psutil
 import logging
-import random
-import json
-import copy
+from collections import defaultdict
+from multiprocessing.pool import Pool
+from scipy import ndimage as nd
+from typing import Tuple, Dict, List, Any, Union
+
 import numpy as np
 import numpy.typing as npt
 
 import torch
 from torch.utils.data import Dataset
 
-from multiprocessing.pool import Pool
-from scipy import ndimage as nd
-from typing import Tuple, Dict, List, Any, Union
 from .utils import get_nodule_type, load_series_list
-from .augmentation import RandomFlipYXZ, RandomRotation90, RandomRotation, RandomCutout, random_color, random_blur, random_gauss_noise
+from .augmentation import RandomFlipYXZ
 
 logger = logging.getLogger(__name__)
 MIN_MEM_GB = 100
@@ -43,44 +41,27 @@ def auto_thickness(threshold_upper_limit: float):
     return cal_prob_threshold
 
 def get_threshold_based_nodule_3d_thickness(thickness: int) -> float:
-    return 0.5
-    # if isinstance(thickness, np.ndarray) and len(thickness.shape) == 1:
-    #     thickness = thickness[0]
-    
-    # thickness = int(thickness)
-    
-    # threshold_upper_limit = 0.4
-    # if thickness <= 3:
-    #     return threshold_upper_limit
-    # elif thickness >= 9:
-    #     return max(threshold_upper_limit - 0.2, 0)
-    # else:
-    #     # line (T, 3) to (T-0.2, 9)
-    #     # y = ax + b
-    #     a = -30
-    #     b = 3 - a*threshold_upper_limit
-
-    #     # we're calculating x, hence x = y/a - b/a
-    #     return thickness/a - b/a
-
-    # # adaptive threshold for 3D model
-    # if thickness <= 3:
-    #     return 0.5
-    # elif thickness >= 9:
-    #     return 0.3
-    # else:
-    #     return (15 - thickness) / 30
+    if isinstance(thickness, np.ndarray) and len(thickness.shape) == 1:
+        thickness = thickness[0]
+    thickness = int(thickness)
+    # adaptive threshold for 3D model
+    if thickness <= 3:
+        return 0.5
+    elif thickness >= 9:
+        return 0.3
+    else:
+        return 18 / 30 - thickness / 30
 
 class Stage2Dataset(Dataset):
     """
         Train/validation data generator
     """
     def __init__(self,
-                dataset_type: str,
+               dataset_type: str,
                 nodule_size_ranges: Dict[str, Tuple[int, int]],
                 num_nodules: Dict[str, int],
                 series_list_path: str,
-                crop_setting: dict,
+                crop_settings: dict,
                 cache_folder: str,
                 reset_data_in_disk: bool = True,
                 prepare_data_in_disk: bool = True,
@@ -91,36 +72,40 @@ class Stage2Dataset(Dataset):
         """
         super(Stage2Dataset, self).__init__()
         self.dataset_type = dataset_type
-        self.nodule_size_ranges = nodule_size_ranges
-        # Crop Setting
-        self.crop_setting = crop_setting
-        self.crop_shape = crop_setting['crop_shape']
-        self.final_shape = crop_setting['final_shape']
+        self.nodule_size_ra0nges = nodule_size_ranges
         
-        if self.dataset_type == 'train':
-            self.crop_offset = np.array([6, 6, 4], dtype = np.int32)
-        else:
-            self.crop_offset = np.array([0, 0, 0], dtype = np.int32)
-            
+        # Crop Setting
+        self.large_shape = crop_settings['large_shape']
+        self.medium_shape = crop_settings['medium_shape']
+        self.small_shape = crop_settings['small_shape']
+        self.final_shape= crop_settings['final_shape']
+        self.crop_settings = [self.large_shape, self.medium_shape, self.small_shape, self.final_shape]
+        
         self.series_list_path = series_list_path
+        self.num_nodule_in_dataset = num_nodules
+        
         series_infos = load_series_list(self.series_list_path)
         self.num_patient = len(series_infos)
         
-        self.num_nodule_in_dataset = num_nodules
         # collect paths to resampled CT scan .npy file and corresponding annotation .txt file
         self.annotations = []
         self.series_paths = []
         self.nodule_3d_indices = []
-        self.labels = []
-        self.nodule_info_mapping = dict()
-        self.series_nodule_bboxes = []
-        num_tp_nodule = 0
-        self.num_nodule_3d = 0
+        self.slice_is_nodule = []
 
-        self.metric_born = {key: np.array([0, 0, 0, 0], dtype=np.int32) for key in self.nodule_size_ranges} # [tp, fp, fn, tn]
-        self.nodule_hitting_born = set()
+        self.series_hardness = []
+        self.series_cluster_label = []
+        self.series_index_to_annotation_indices = defaultdict(list) # series_id -> [annotation_indices]
+        self.series_index_to_nodule_3d_indices = defaultdict(list) # series_id -> [nodule_3d_indices]
+            
+        self.nodule_info_mapping = dict()
+        num_tp_slices = 0
+        total_num_slices = 0
+        self.num_nodule_3d = 0
         
-        for series_folder, file_name in series_infos:
+        for series_index, series_info in enumerate(series_infos):
+            series_folder = series_info[0]
+            file_name = series_info[1]
             npy_image_path = os.path.join(series_folder, 
                                         'npy', 
                                         f'{file_name}.npy')
@@ -128,52 +113,44 @@ class Stage2Dataset(Dataset):
                                         'stage1_post_process', 
                                         f'{file_name}.txt')
             
-            series_nodules_counts_path = os.path.join(series_folder,
-                                        'mask', 
-                                        f'{file_name}_nodule_count.json')
-            
-            # Read nodule information in series.
-            with open(series_nodules_counts_path, 'r') as f:
-                series_nodules_counts = json.load(f)
-            nodule_bboxes = np.array(series_nodules_counts['bboxes'], dtype = np.int32) # shape = (N, 2, 3)
             with open(annotation_path, 'r') as f:
-                nodule_3d_list = f.readlines()[1:]
+                nodule_3d_list = f.readlines()[1:]     
 
             for nodule_3d in nodule_3d_list:
                 nodule_bboxs_2d = nodule_3d.split(' ')
-                gt_nodule_index, gt_nodule_sizes, pred_nodule_sizes = [int(c) for c in nodule_bboxs_2d[0].split(',')]
+                gt_nodule_index, gt_nodule_size, pred_nodule_size = [int(c) for c in nodule_bboxs_2d[0].split(',')]
                 
-                is_true_nodule = (gt_nodule_sizes > 0)
-            
+                is_true_nodule = (gt_nodule_size > 0)
+                self.nodule_info_mapping[self.num_nodule_3d] = [int(is_true_nodule), series_folder, npy_image_path, gt_nodule_index, gt_nodule_size, pred_nodule_size]
+                self.series_index_to_nodule_3d_indices[series_index].append(self.num_nodule_3d)
+                
                 nodule_bboxs_2d = nodule_bboxs_2d[1:]
                 nodule_thickness = len(nodule_bboxs_2d)
-                if nodule_thickness == 0:
-                    continue
-                self.nodule_info_mapping[self.num_nodule_3d] = [int(is_true_nodule), series_folder, npy_image_path, gt_nodule_index, gt_nodule_sizes, pred_nodule_sizes]
-                
-                # Get bbox of center
-                bbox_2ds = [[float(c) for c in bbox_2d.split(',')] for bbox_2d in nodule_bboxs_2d] # (slice_id, y_min, x_min, y_max, x_max, iou)
-                bbox_2ds = np.array(bbox_2ds)
-                y_min, x_min = np.min(bbox_2ds[:,[1, 2]], axis=0)
-                y_max, x_max = np.max(bbox_2ds[:,[3, 4]], axis=0)
-                bbox = [bbox_2ds[nodule_thickness // 2][0], y_min, x_min, y_max, x_max, nodule_thickness] # (slice_id, y_min, x_min, y_max, x_max, nodule_thickness)
-                # Count number of true nodule
-                if is_true_nodule:
-                    num_tp_nodule += 1
-                    self.labels.append([1])
-                else:
-                    self.labels.append([0])
-                
-                self.annotations.append(bbox)
-                
-                self.series_paths.append(npy_image_path)
-                # self.series_nodule_bboxes.append(nodule_bboxes)
-                self.nodule_3d_indices.append(self.num_nodule_3d)
+                for i, bbox_2d in enumerate(nodule_bboxs_2d):
+                    bbox = [float(c) for c in bbox_2d.split(',')] # (slice_id, y_min, x_min, y_max, x_max, iou)
+                    # Remove Iou
+                    iou = bbox.pop(-1)
+                    # Count number of true nodule
+                    if (iou > 0.0) or (is_true_nodule and (not (i == 0 or i == len(nodule_bboxs_2d) - 1))):
+                        num_tp_slices += 1
+                        self.slice_is_nodule.append([1])
+                    elif is_true_nodule: # If the slice is true nodule but in the first or last slice, we don't count it
+                        continue
+                    else:
+                        self.slice_is_nodule.append([0])
+                    
+                    bbox.append(nodule_thickness) # (slice_id, y_min, x_min, y_max, x_max, nodule_thickness)
+                    total_num_slices += 1
+                    
+                    self.annotations.append(bbox)
+                    self.series_index_to_annotation_indices[series_index].append(len(self.annotations) - 1)
+                    self.series_paths.append(npy_image_path)
+                    self.nodule_3d_indices.append(self.num_nodule_3d)
                 self.num_nodule_3d += 1
-
+                
         self.nodule_3d_indices = np.array(self.nodule_3d_indices)
-        self.alpha = 1 - (num_tp_nodule / self.num_nodule_3d) # alpha for focal loss
-        
+        self.alpha = 1 - (num_tp_slices / total_num_slices) # alpha for focal loss
+
         # The setting of cache
         self.cache = dict()
         self.prepare_data_in_disk = prepare_data_in_disk
@@ -189,7 +166,7 @@ class Stage2Dataset(Dataset):
     def compute_nodule_3d_metrics(self, 
                                 indices: npt.NDArray[np.int32], 
                                 preds: npt.NDArray[np.float32],
-                                gt_length_threshold = 1,
+                                gt_length_threshold = 2,
                                 fp_per_patient = None) -> Dict[str, Dict[str, float]]:
         if not isinstance(indices, np.ndarray):
             indices = np.array(indices, dtype = np.int32)
@@ -203,14 +180,13 @@ class Stage2Dataset(Dataset):
             pred_2d_positives = (preds >= threshold).astype(np.int32)
             metric_result = {k: np.zeros(4, dtype=np.int32) for k in self.nodule_size_ranges.keys()}
 
-            nodule_hitting_map = copy.deepcopy(self.nodule_hitting_born)
-            
+            nodule_hitting_map = set()
             for nodule_3d_id in self.nodule_info_mapping.keys():
-                is_true_nodule, series_folder, npy_image_path, gt_nodule_index, gt_nodule_sizes, pred_nodule_sizes = self.nodule_info_mapping[nodule_3d_id]
-                nodule_sizes = gt_nodule_sizes if is_true_nodule == 1 else pred_nodule_sizes
+                is_true_nodule, series_folder, npy_image_path, gt_nodule_index, gt_nodule_size, pred_nodule_size = self.nodule_info_mapping[nodule_3d_id]
+                nodule_size = gt_nodule_size if is_true_nodule == 1 else pred_nodule_size
+                
                 target = (self.nodule_3d_indices == nodule_3d_id)
                 pred_3d = (np.sum(pred_2d_positives[target]) >= gt_length_threshold)
-                
                 tp, fp, fn, tn = 0, 0, 0, 0
                 nodule_hitting_key = (npy_image_path, gt_nodule_index)
                 
@@ -224,12 +200,8 @@ class Stage2Dataset(Dataset):
                 else:
                     tn += 1
 
-                metric_result[get_nodule_type(nodule_sizes, self.nodule_size_ranges)] += np.array([tp, fp, tn, fn], dtype=np.int32)
+                metric_result[get_nodule_type(nodule_size, self.nodule_size_ranges)] += np.array([tp, fp, tn, fn], dtype=np.int32)
 
-            # Add metric born
-            for nodule_type, value in metric_result.items():
-                metric_result[nodule_type] += self.metric_born[nodule_type]
-            
             # Replace false negative(fn) by real number of nodule in dataset
             for nodule_type, value in metric_result.items():
                 tp, fp, tn, fn = value
@@ -265,11 +237,6 @@ class Stage2Dataset(Dataset):
             else:
                 f1_score = 2 * ((recall * precision) / (recall + precision))
 
-            if recall + precision <= 0:
-                f2_score = 0
-            else:
-                f2_score = 5 * ((recall * precision) / (4 * recall + precision))
-
             if tp + fn + fp + tn <= 0:
                 accuracy = 0
             else:
@@ -278,7 +245,6 @@ class Stage2Dataset(Dataset):
             metrics = {'recall': recall, 
                        'precision': precision, 
                        'f1_score': f1_score, 
-                       'f2_score': f2_score,
                        'accuracy': accuracy,
                        'tp': tp,
                        'fp': fp,
@@ -297,8 +263,8 @@ class Stage2Dataset(Dataset):
                                                 threshold_upper_limit = 0.5) -> Dict[str, Dict[str, Union[int, float]]]:
         """
         Args:
-            indices (npt.NDArray[np.int32]):
-            preds (npt.NDArray[np.float32]):
+            num_nodules_of_series: Dict[str, int]
+                A dict of pair[series_folder, num_nodule]
         Returns: Dict[str, Dict[str, Union[int, float]]]
             A dict of (series_folder, metrics), metrics is a dict of (metric_name, value)
         """
@@ -315,8 +281,8 @@ class Stage2Dataset(Dataset):
         nodule_hitting_map = set()
         metric_result = dict()
         for nodule_3d_id in self.nodule_info_mapping.keys():
-            is_true_nodule, series_folder, npy_image_path, gt_nodule_index, gt_nodule_sizes, pred_nodule_sizes = self.nodule_info_mapping[nodule_3d_id]
-            nodule_sizes = gt_nodule_sizes if is_true_nodule == 1 else pred_nodule_sizes
+            is_true_nodule, series_folder, npy_image_path, gt_nodule_index, gt_nodule_size, pred_nodule_size = self.nodule_info_mapping[nodule_3d_id]
+            nodule_size = gt_nodule_size if is_true_nodule == 1 else pred_nodule_size
             
             target = (self.nodule_3d_indices == nodule_3d_id)
             pred_3d = (np.sum(pred_2d_positives[target]) >= gt_length_threshold)
@@ -340,7 +306,7 @@ class Stage2Dataset(Dataset):
 
         # Replace false negative(fn) by real number of nodule in dataset
         for series_folder, real_num_nodule in nodule_count_of_series.items():
-            tp, fp, tn, fn = metric_result[series_folder]
+            tp, fp, tn, fn = metric_result.get(series_folder, [0, 0, 0, 0])
             fn = real_num_nodule - tp
             recall = tp / max(tp + fn, 1)
             precision = tp / max(tp + fp, 1)
@@ -349,11 +315,6 @@ class Stage2Dataset(Dataset):
             else:
                 f1_score = 2 * ((recall * precision) / (recall + precision))
 
-            if recall + precision <= 0:
-                f2_score = 0
-            else:
-                f2_score = 5 * ((recall * precision) / (4 * recall + precision))
-
             if tp + fn + fp + tn <= 0:
                 accuracy = 0
             else:
@@ -361,7 +322,6 @@ class Stage2Dataset(Dataset):
             metric_result[series_folder] = {'recall': recall, 
                                             'precision': precision, 
                                             'f1_score': f1_score, 
-                                            'f2_score': f2_score,
                                             'accuracy': accuracy,
                                             'tp': tp,
                                             'fp': fp,
@@ -372,116 +332,154 @@ class Stage2Dataset(Dataset):
 
     def prepare_datas(self):
         logger.info("Start to prepare data!")
+        pool = Pool(os.cpu_count() // 2)
 
-        save_folder = join(self.cache_path, self.dataset_type)
+        saving_folder = os.path.join(self.cache_path, self.dataset_type)
         if self.reset_datas:
-            reset_folder(save_folder)
+            reset_folder(saving_folder)
+        self.prepare_data_paths = []
+        
+        def error_when_running(error):
+            print(error)
             
-        self.cache_paths = []
         try:
-            tasks = []
-            pool = Pool(os.cpu_count() // 2)
-            for i in range(len(self)):
-                series_path = self.series_paths[i]
-                annotation = self.annotations[i]
-                label = self.labels[i]
-                cache_path = os.path.join(save_folder, '{}.npz'.format(i))
-                self.cache_paths.append(cache_path)
-                tasks.append((series_path, annotation, label, self.crop_setting, cache_path, False, self.crop_offset))
-                
-            pool.starmap(self._prepare_data, tasks)
+            for index in range(len(self.annotations)):
+                series_path = self.series_paths[index]
+                annotation = self.annotations[index]
+                saving_path = os.path.join(saving_folder, '{}.npz'.format(index))
+
+                self.prepare_data_paths.append(saving_path)
+                if not self.reset_datas:
+                    continue
+                pool.apply_async(self._prepare_data,
+                                 args = (series_path, annotation, self.crop_settings, saving_path, self.slice_is_nodule[index], False),
+                                error_callback = error_when_running)
             pool.close()
             pool.join()
         finally:
             pool.terminate()
     
     @staticmethod
-    def _prepare_data(series_path: str, 
-                      annotation: tuple, 
-                      label: List[int], 
-                      crop_setting: Dict[str, List[int]], 
-                      save_path: str, 
-                      return_data: bool, 
-                      crop_offset: npt.NDArray[np.int32]) -> Union[Dict[str, np.ndarray], None]:
-        crop_shape = copy.deepcopy(crop_setting['crop_shape'])
-        final_shape = copy.deepcopy(crop_setting['final_shape'])
-        
-        # If the crop offset is not zero, we need to adjust the patch shape and final shape
-        if crop_offset[0] != 0:
-            crop_shape = np.array(crop_shape, dtype = np.int32)
-            final_shape = np.array(final_shape, dtype = np.int32)
-            crop_shape = (crop_shape + (crop_offset * (crop_shape / final_shape))).astype(np.int32)
-            final_shape = (final_shape + crop_offset).astype(np.int32)
-            
-        image = np.load(series_path, mmap_mode = 'c')
-        
-        patch_h, patch_w, patch_d  = crop_shape
-        final_h, final_w, final_d  = final_shape
-        image_h, image_w, image_d = image.shape
-    
-        # Read annotation
+    def _prepare_data(series_path: str, annotation: tuple, crop_settings:tuple, saving_path: str, slice_is_nodule: list, return_data: bool):
+        large_shape, medium_shape, small_shape, final_shape = crop_settings
+        # get the series
+        series = np.load(series_path, mmap_mode='c')
+        # read the bbox information
         slice_number, y_min, x_min, y_max, x_max, thickness = annotation
         slice_number = int(slice_number)
-        thickness = int(thickness)
-        y_center = round(y_min + (y_max - y_min) / 2)
+
         x_center = round(x_min + (x_max - x_min) / 2)
+        y_center = round(y_min + (y_max - y_min) / 2)
+        thickness = int(thickness)
+        # Updated on 2023/03/24
+        lower_index = slice_number - (large_shape[2] // 2)
+
+        if lower_index < 0:
+            lower_index = 0
+        if lower_index + large_shape[2] > series.shape[2]:
+            lower_index = series.shape[2] - large_shape[2]
+
+        # get the patch of the nodule by cropping the image(y, x, channel)
+        large_patch = series[int(max(y_center - (large_shape[0]/2), 0)) : int(min(y_center + (large_shape[0]/2), 512)), 
+                            int(max(x_center - (large_shape[1]/2), 0)) : int(min(x_center + (large_shape[1]/2), 512)),
+                            lower_index : lower_index+large_shape[2]]
         
-        # Calculate the patch range
-        patch_start_x = int(np.clip(x_center - (patch_w // 2), 0, image_w - patch_w))
-        patch_start_y = int(np.clip(y_center - (patch_h // 2), 0, image_h - patch_h))
-        patch_start_z = int(np.clip(slice_number - (patch_d // 2), 0, image_d - patch_d))
+        # if the patch is too small, add padding to it
+        if np.any(large_patch.shape[0:2]!=(large_shape[0], large_shape[1])):
+            large_patch = np.pad(large_patch, ((max(int(large_shape[0]/2)-y_center, 0), int(large_shape[0]/2) - min(series.shape[0]-y_center, int(large_shape[0]/2))),
+                                            (max(int(large_shape[1]/2)-x_center, 0), int(large_shape[1]/2) - min(series.shape[1]-x_center, int(large_shape[1]/2))),
+                                            (0, 0)), 
+                                            mode='constant', 
+                                            constant_values=-1024)
         
-        patch = image[patch_start_y : patch_start_y + patch_h, 
-                      patch_start_x : patch_start_x + patch_w, 
-                      patch_start_z : patch_start_z + patch_d]
+        # convert HU values (-1000, 400) to (0, 1)
+        large_patch[large_patch<-1000] = -1000
+        large_patch[large_patch>400] = 400
+        large_patch = large_patch + 1000
+            
+        # crop patches of 3 different scales
+        medium_patch = large_patch[round((large_shape[0]-medium_shape[0])/2) : -round((large_shape[0]-medium_shape[0])/2),
+                                round((large_shape[1]-medium_shape[1])/2) : -round((large_shape[1]-medium_shape[1])/2),
+                                round((large_shape[2]-medium_shape[2])/2) : -round((large_shape[2]-medium_shape[2])/2)]
+
+        small_patch = large_patch[round((large_shape[0]-small_shape[0])/2) : -round((large_shape[0]-small_shape[0])/2),
+                                round((large_shape[1]-small_shape[1])/2) : -round((large_shape[1]-small_shape[1])/2),
+                                round((large_shape[2]-small_shape[2])/2) : -round((large_shape[2]-small_shape[2])/2)]
         
-        # Convert HU values to (0, 1400)
-        patch = np.clip(patch, -1000, 400) + 1000
-           
-        # Resize patch to final shape
-        patch_resized = nd.zoom(patch, zoom=(final_h / patch_h,
-                                            final_w / patch_w,
-                                            final_d / patch_d), 
-                                            mode = 'nearest',
-                                            order = 3)
+        # Updated on 2023/03/24
+        # resize patches
+        large_patch_resized = large_patch
+
+        medium_patch_resized = nd.zoom(medium_patch, zoom=(final_shape[0]/medium_shape[0],
+                                                        final_shape[1]/medium_shape[1],
+                                                        final_shape[2]/medium_shape[2]), 
+                                                    mode='nearest')
+
+        small_patch_resized = nd.zoom(small_patch, zoom=(final_shape[0]/small_shape[0],
+                                                        final_shape[1]/small_shape[1],
+                                                        final_shape[2]/small_shape[2]), 
+                                                mode='nearest')
         
-        label = np.array(label, dtype = np.int16)
-        thickness = np.array(thickness, dtype = np.int16)
+        # Change dimension order from (H, W, D) to (1, D, H, W)
+        large_patch_resized = np.transpose(large_patch_resized, (2, 0, 1))
+        medium_patch_resized = np.transpose(medium_patch_resized, (2, 0, 1))
+        small_patch_resized = np.transpose(small_patch_resized, (2, 0, 1))
         
-        datas = {'patch': patch_resized,
+        # add 1 dimension for 3D convolutions
+        large_patch_resized = np.expand_dims(large_patch_resized, axis=0)
+        medium_patch_resized = np.expand_dims(medium_patch_resized, axis=0)
+        small_patch_resized = np.expand_dims(small_patch_resized, axis=0)
+
+        # get the label of the nodule based on IoU calculated in Stage 1
+        label = slice_is_nodule
+
+        label = np.array(label, dtype=np.int16)
+        thickness = np.array(thickness, dtype=np.int16)
+
+        datas = {'large_patch_resized': large_patch_resized,
+                'medium_patch_resized': medium_patch_resized,
+                'small_patch_resized': small_patch_resized, 
                 'label': label,
                 'thickness': thickness}
-        
         if return_data:
             return datas
-        np.savez(save_path, **datas)
         
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        np.savez(saving_path, **datas)
+        
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Returns: A tuple of 4 tensors (patch, label, threshold, index)
-            patch (torch.Tensor): (1, D, H, W)
+        Get train/validatation data.
+        This function crops the dicom series to get 3 patches of different receptive field.
+        
+        Returns: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+            large_patch_resized (torch.Tensor): (1, D, H, W)
+            medium_patch_resized (torch.Tensor): (1, D, H, W)
+            small_patch_resized (torch.Tensor): (1, D, H, W)
             label (torch.Tensor): (1, )
             threshold (torch.Tensor): (1, )
             index (torch.Tensor): (1, )
         """
+        if len(index.shape) != 0:
+            index = index[0]
+        index = int(index)
+        
         datas = self.cache.get(index, None)
         if datas == None:
-            # Read data from disk
-            if self.prepare_data_in_disk:
-                cache = self.cache_paths[index]
+            if self.prepare_data_in_disk: # Read data prepared in disk
+                cache = self.prepare_data_paths[index]
                 datas = np.load(cache)
             else: # Read raw data and process
                 series_path = self.series_paths[index]
                 annotation = self.annotations[index]
-                label = self.labels[index]
                 datas = self._prepare_data(series_path = series_path,
                                             annotation = annotation,
-                                            label = label,
-                                            crop_setting = self.crop_setting,
-                                            save_path = '',
-                                            return_data = True,
-                                            crop_offset = self.crop_offset)
-            patch = datas['patch']
+                                            crop_settings = self.crop_settings,
+                                            slice_is_nodule = self.slice_is_nodule[index],
+                                            saving_path = '',
+                                            return_data = True)
+            large_patch_resized = datas['large_patch_resized']
+            medium_patch_resized = datas['medium_patch_resized']
+            small_patch_resized = datas['small_patch_resized']
             label = datas['label']
             # Calculate threshold
             thickness = datas['thickness']
@@ -489,61 +487,33 @@ class Stage2Dataset(Dataset):
             threshold = np.array([threshold], np.float32)
             # Cache data into memory
             if self.cache_in_memory:
-                self.cache[index] = [patch, label, threshold]
+                self.cache[index] = [large_patch_resized, medium_patch_resized, small_patch_resized, label, threshold]
         else:
-            patch, label, threshold = datas
+            large_patch_resized, medium_patch_resized, small_patch_resized, label, threshold = datas
 
-        # Convert HU values to (0, 1400)
-        patch = patch.astype(np.float32) / 1400
-        
         if self.dataset_type == 'train':
-            patch = self.augmentation(patch)
+            large_patch_resized, medium_patch_resized, small_patch_resized = self.augmentation(large_patch_resized, medium_patch_resized, small_patch_resized)
         
-        patch = np.expand_dims(np.transpose(patch, (2, 0, 1)), axis = 0) # (H, W, D) -> (1, D, H, W)
-        index = np.array([index], dtype = np.float32)
+        large_patch_resized = large_patch_resized.astype(np.float32) / 1400
+        medium_patch_resized = medium_patch_resized.astype(np.float32) / 1400
+        small_patch_resized = small_patch_resized.astype(np.float32) / 1400
+        index = np.array([index], dtype=np.float32)
         
         # Convert to tensor
-        patch = torch.from_numpy(patch.copy()).float()
-        label = torch.from_numpy(label.copy()).float()
-        threshold = torch.from_numpy(threshold.copy()).float()
-        index = torch.from_numpy(index.copy()).float()
+        large_patch_resized = torch.from_numpy(large_patch_resized).float()
+        medium_patch_resized = torch.from_numpy(medium_patch_resized).float()
+        small_patch_resized = torch.from_numpy(small_patch_resized).float()
+        label = torch.from_numpy(label).float()
+        threshold = torch.from_numpy(threshold).float()        
+        index = torch.from_numpy(index).float()
         
-        return patch, label, threshold, index
-    
-    def augmentation(self, patch: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
-        patch = self._random_crop(patch)
-        images = [patch]
-        images = RandomFlipYXZ(0.3)(images)
-        images = RandomRotation90(0.2)(images)
-        images = RandomRotation(p = 0.2)(images, [False])
-        
-        patch = images[0]
-        patch = random_color(patch, p = 0.2)
-        patch = random_blur(patch, p = 0.1)
-        patch = random_gauss_noise(patch, p = 0.1)
-        patch = RandomCutout(0.2, img_size = self.final_shape)([patch])[0]
-        
-        return patch
-    
-    def _random_crop(self, patch: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
-        """
-        Args:
-            patch: npt.NDArray[np.float32]
-                shpae = (H, W, D)
-        Returns:
-            patch: (npt.NDArray[np.float32])
-                shpae = (H, W, D)
-        """
-        if self.crop_offset[0] != 0:
-            start_p = [random.randrange(s) for s in self.crop_offset]
-            final_y, final_x, final_z = self.final_shape
-            start_y, start_x, start_z = start_p
-            patch = patch[start_y : start_y + final_y,
-                          start_x : start_x + final_x,
-                          start_z : start_z + final_z
-                          ].copy()
-        return patch
+        return large_patch_resized, medium_patch_resized, small_patch_resized, label, threshold, index
 
+    def augmentation(self, large_patch_resized, medium_patch_resized, small_patch_resized):
+        images = [large_patch_resized, medium_patch_resized, small_patch_resized]
+        images = RandomFlipYXZ(0.3)(images)
+        return images
+    
     def __len__(self) -> int:
         return len(self.annotations)
     

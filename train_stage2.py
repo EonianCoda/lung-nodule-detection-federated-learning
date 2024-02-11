@@ -154,21 +154,21 @@ if __name__ == '__main__':
     train_dataset = Stage2Dataset(dataset_type = 'train',
                                     nodule_size_ranges = nodule_size_ranges,
                                     num_nodules = num_nodule_in_train_set,
-                                    crop_setting = fl_config['client']['dataset']['params']['crop_setting'],
+                                    crop_settings = fl_config['client']['dataset']['params']['crop_setting'],
                                     cache_folder = cache_folder,
                                     series_list_path = train_set_path)
     
     val_dataset = Stage2Dataset(dataset_type = 'valid',
                                 nodule_size_ranges = nodule_size_ranges,
                                 num_nodules = num_nodule_in_val_set,
-                                crop_setting = fl_config['client']['dataset']['params']['crop_setting'],
+                                crop_settings = fl_config['client']['dataset']['params']['crop_setting'],
                                 cache_folder = cache_folder,
                                 series_list_path = val_set_path)
     
     test_dataset = Stage2Dataset(dataset_type = 'test',
                                 nodule_size_ranges = nodule_size_ranges,
                                 num_nodules = num_nodule_in_test_set,
-                                crop_setting = fl_config['client']['dataset']['params']['crop_setting'],
+                                crop_settings = fl_config['client']['dataset']['params']['crop_setting'],
                                 cache_folder = cache_folder,
                                 series_list_path = test_set_path)
 
@@ -183,14 +183,14 @@ if __name__ == '__main__':
         logger.info("Epoch {}/{}:".format(epoch + 1, end_epoch))
         # Train
         train_metrics = train(model = model, 
-                                     dataset = train_dataset, 
-                                     optimizer = optimizer, 
-                                     num_epoch = 1, 
-                                     batch_size = batch_size, 
-                                     device = device, 
-                                     enable_progress_bar=True,
-                                     log_metric=True,
-                                     ema = ema)
+                            dataset = train_dataset, 
+                            optimizer = optimizer, 
+                            num_epoch = 1, 
+                            batch_size = batch_size, 
+                            device = device, 
+                            enable_progress_bar=True,
+                            log_metric=True,
+                            ema = ema)
         write_metrics(train_metrics, epoch, 'train', writer)
         
         # Use Shadow model to validate and save model
