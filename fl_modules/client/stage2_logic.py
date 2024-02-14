@@ -123,7 +123,7 @@ def train(model: nn.Module,
           num_epoch: int, 
           device: torch.device,
           ema: EMA = None,
-          batch_size = 1,
+          batch_size = 16,
           enable_progress_bar = False,
           log_metric = False) -> Dict[str, float]:
     
@@ -135,18 +135,20 @@ def train(model: nn.Module,
     logger.info('Alpha = {:.4f}'.format(alpha))
     loss_fn = focal_loss(alpha = alpha, gamma = 2.0)
     
-    train_dataloader = DataLoader(dataset, batch_size = batch_size, shuffle = True, num_workers = os.cpu_count() // 2)
+    train_dataloader = DataLoader(dataset, batch_size = batch_size, shuffle = True, num_workers = os.cpu_count() // 2, pin_memory=True)
     total_num_steps = len(train_dataloader)
     for epoch in range(num_epoch):
         if enable_progress_bar:
-            progress_bar = get_progress_bar('Train', len(train_dataloader), epoch, num_epoch)
+            progress_bar = get_progress_bar('Train', len(train_dataloader))
         else:
             progress_bar = None
             
         nodule_metrics = NoduleMetrics(dataset)
         running_loss = 0.0
         for step, (patchs, labels, thresholds, indices) in enumerate(train_dataloader):
-            patchs, labels = patchs.to(device), labels.to(device)
+            for i in range(len(patchs)):
+                patchs[i] = patchs[i].to(device, non_blocking=True) 
+            labels = labels.to(device, non_blocking=True)
             preds = model(patchs)
             
             # Calculate loss
@@ -194,15 +196,17 @@ def validation(model: nn.Module,
                log_metric = False) -> Dict[str, float]:
     model.eval()
     
-    val_dataloader = DataLoader(dataset, batch_size = batch_size, shuffle = False, num_workers = os.cpu_count() // 2)
+    val_dataloader = DataLoader(dataset, batch_size = batch_size, shuffle = False, num_workers = os.cpu_count() // 2, pin_memory=True)
     
     if enable_progress_bar:
-        progress_bar = get_progress_bar('Validation', len(val_dataloader), 0, 1)
+        progress_bar = get_progress_bar('Validation', len(val_dataloader))
     else:
         progress_bar = None
     nodule_metrics = NoduleMetrics(dataset)
     for step, (patchs, labels, thresholds, indices) in enumerate(val_dataloader):
-        patchs, labels = patchs.to(device), labels.to(device)
+        for i in range(len(patchs)):
+            patchs[i] = patchs[i].to(device, non_blocking=True) 
+        labels = labels.to(device, non_blocking=True)
         preds = model(patchs)
         
         nodule_metrics.update(preds, labels, thresholds, indices)

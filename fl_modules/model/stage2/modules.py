@@ -42,7 +42,7 @@ class ChannelAttention(nn.Module):
         
         feat_combined = avg_feat + max_feat
         feat_combined = self.sigmoid(feat_combined)
-        
+        feat_combined = feat_combined.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
         return feat_combined * x
 
 class SpatialAttention(nn.Module):

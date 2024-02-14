@@ -32,12 +32,11 @@ def get_parser():
     parser.add_argument('--train_set', default = 'fl_cmp_trainABC.txt')
     parser.add_argument('--val_set', default = 'fl_cmp_valABC.txt')
     parser.add_argument('--test_set', default = 'val.txt')
-    parser.add_argument('--batch_size', type = int, default = 64)
-    parser.add_argument('--num_epoch', type = int, default = 80)
-    parser.add_argument('--lr', type = float, default = 0.0001)
+    parser.add_argument('--batch_size', type = int, default = 16)
+    parser.add_argument('--num_epoch', type = int, default = 50)
+    parser.add_argument('--lr', type = float, default = 0.0005)
     parser.add_argument('--seed', type = int, default = 1029)
     parser.add_argument('--model', default='fl_modules.model.stage2.stage2_model.Stage2Model')
-    parser.add_argument('--base_planes', type = int, default = 16)
     parser.add_argument('--apply_ema', action='store_true', default=False)
     parser.add_argument('--ema_decay', type=float, default=0.999)
     parser.add_argument('--resume_model_path', type=str, default='')
@@ -73,7 +72,6 @@ if __name__ == '__main__':
     batch_size = args.batch_size
     num_epoch = args.num_epoch
     learning_rate = args.lr
-    base_planes = args.base_planes
     apply_ema = args.apply_ema
     resume_model_path = args.resume_model_path
     best_model_metric_name = args.best_model_metric_name
@@ -118,7 +116,7 @@ if __name__ == '__main__':
         exp_root = os.path.dirname(os.path.dirname(resume_model_path))
     else: 
         # Build new model
-        model = build_instance(args.model, {'base_planes': base_planes})
+        model = build_instance(args.model, None)
         model = model.to(device)
         optimizer = optim.Adam(model.parameters(), lr=learning_rate)
         start_epoch = 0
@@ -154,21 +152,21 @@ if __name__ == '__main__':
     train_dataset = Stage2Dataset(dataset_type = 'train',
                                     nodule_size_ranges = nodule_size_ranges,
                                     num_nodules = num_nodule_in_train_set,
-                                    crop_settings = fl_config['client']['dataset']['params']['crop_setting'],
+                                    crop_settings = fl_config['client']['dataset']['params']['crop_settings'],
                                     cache_folder = cache_folder,
                                     series_list_path = train_set_path)
     
     val_dataset = Stage2Dataset(dataset_type = 'valid',
                                 nodule_size_ranges = nodule_size_ranges,
                                 num_nodules = num_nodule_in_val_set,
-                                crop_settings = fl_config['client']['dataset']['params']['crop_setting'],
+                                crop_settings = fl_config['client']['dataset']['params']['crop_settings'],
                                 cache_folder = cache_folder,
                                 series_list_path = val_set_path)
     
     test_dataset = Stage2Dataset(dataset_type = 'test',
                                 nodule_size_ranges = nodule_size_ranges,
                                 num_nodules = num_nodule_in_test_set,
-                                crop_settings = fl_config['client']['dataset']['params']['crop_setting'],
+                                crop_settings = fl_config['client']['dataset']['params']['crop_settings'],
                                 cache_folder = cache_folder,
                                 series_list_path = test_set_path)
 

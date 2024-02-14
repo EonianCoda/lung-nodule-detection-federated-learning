@@ -1,6 +1,7 @@
 import os
 import shutil
 import psutil
+import random
 import logging
 from collections import defaultdict
 from multiprocessing.pool import Pool
@@ -14,10 +15,34 @@ import torch
 from torch.utils.data import Dataset
 
 from .utils import get_nodule_type, load_series_list
-from .augmentation import RandomFlipYXZ
 
 logger = logging.getLogger(__name__)
 MIN_MEM_GB = 100
+
+class RandomFlipYXZ:
+    def __init__(self, p: float = 0.5):
+        self.p = p
+    
+    def __call__(self, images: List[torch.Tensor]) -> List[torch.Tensor]:
+        flip_axes = []
+        
+        if len(images[0].shape) == 4: # (C, D, H, W)
+            start_dim = 1
+        else:
+            start_dim = 0
+        
+        for i in range(start_dim, len(images[0].shape)):
+            if random.random() < self.p:
+                flip_axes.append(i)
+        
+        if len(flip_axes) != 0:
+            for i in range(len(images)):
+                if isinstance(images[i], torch.Tensor):
+                    images[i] = torch.flip(images[i], flip_axes)
+                else:
+                    images[i] = np.flip(images[i], flip_axes)
+       
+        return images
 
 def reset_folder(path):
     if os.path.exists(path):
@@ -72,7 +97,7 @@ class Stage2Dataset(Dataset):
         """
         super(Stage2Dataset, self).__init__()
         self.dataset_type = dataset_type
-        self.nodule_size_ra0nges = nodule_size_ranges
+        self.nodule_size_ranges = nodule_size_ranges
         
         # Crop Setting
         self.large_shape = crop_settings['large_shape']
@@ -459,10 +484,6 @@ class Stage2Dataset(Dataset):
             threshold (torch.Tensor): (1, )
             index (torch.Tensor): (1, )
         """
-        if len(index.shape) != 0:
-            index = index[0]
-        index = int(index)
-        
         datas = self.cache.get(index, None)
         if datas == None:
             if self.prepare_data_in_disk: # Read data prepared in disk
@@ -507,7 +528,7 @@ class Stage2Dataset(Dataset):
         threshold = torch.from_numpy(threshold).float()        
         index = torch.from_numpy(index).float()
         
-        return large_patch_resized, medium_patch_resized, small_patch_resized, label, threshold, index
+        return [large_patch_resized, medium_patch_resized, small_patch_resized], label, threshold, index
 
     def augmentation(self, large_patch_resized, medium_patch_resized, small_patch_resized):
         images = [large_patch_resized, medium_patch_resized, small_patch_resized]
