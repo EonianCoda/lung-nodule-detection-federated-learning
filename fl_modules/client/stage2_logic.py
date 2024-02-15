@@ -191,7 +191,7 @@ def train(model: nn.Module,
 def validation(model: nn.Module, 
                dataset: Dataset,
                device: torch.device = torch.device('cpu'),
-               batch_size = 64,
+               batch_size = 32,
                enable_progress_bar = False,
                log_metric = False) -> Dict[str, float]:
     model.eval()
@@ -204,10 +204,11 @@ def validation(model: nn.Module,
         progress_bar = None
     nodule_metrics = NoduleMetrics(dataset)
     for step, (patchs, labels, thresholds, indices) in enumerate(val_dataloader):
-        for i in range(len(patchs)):
-            patchs[i] = patchs[i].to(device, non_blocking=True) 
-        labels = labels.to(device, non_blocking=True)
-        preds = model(patchs)
+        with torch.no_grad():
+            for i in range(len(patchs)):
+                patchs[i] = patchs[i].to(device, non_blocking=True) 
+            labels = labels.to(device, non_blocking=True)
+            preds = model(patchs)
         
         nodule_metrics.update(preds, labels, thresholds, indices)
         metrics_2d = nodule_metrics.get_metrics_2d()
@@ -232,12 +233,12 @@ def validation(model: nn.Module,
 def test(model: nn.Module, 
          dataset: Dataset,
          device: torch.device = torch.device('cpu'),
-         batch_size = 64,
+         batch_size = 32,
          enable_progress_bar = False,
          log_metric = False) -> Dict[str, float]:
     model.eval()
     
-    val_dataloader = DataLoader(dataset, batch_size = batch_size, shuffle = False, num_workers = os.cpu_count() // 2)
+    val_dataloader = DataLoader(dataset, batch_size = batch_size, shuffle = False, num_workers = os.cpu_count() // 2, pin_memory=True)
     
     if enable_progress_bar:
         progress_bar = get_progress_bar('Validation', len(val_dataloader), 0, 1)
@@ -246,8 +247,11 @@ def test(model: nn.Module,
         
     nodule_metrics = NoduleMetrics(dataset)
     for step, (patchs, labels, thresholds, indices) in enumerate(val_dataloader):
-        patchs, labels = patchs.to(device), labels.to(device)
-        preds = model(patchs)
+        with torch.no_grad():
+            for i in range(len(patchs)):
+                patchs[i] = patchs[i].to(device, non_blocking=True) 
+            labels = labels.to(device, non_blocking=True)
+            preds = model(patchs)
         
         nodule_metrics.update(preds, labels, thresholds, indices)
         metrics_2d = nodule_metrics.get_metrics_2d()

@@ -65,15 +65,13 @@ if __name__ == '__main__':
 
     args = get_parser()
     fl_config = load_yaml(args.config_path)
-    iou_threshold = args.iou_threshold
-    nodule_3d_minimum_size = args.nodule_3d_minimum_size
     model_path = args.model_path
     result_save_path = args.result_save_path
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     if model_path == 'auto':
         model_folder = get_newer_folder('./save')
-        model_path = os.path.join(model_folder, 'best_model.pth')
+        model_path = os.path.join(model_folder, 'best.pth')
     
     logger.info('Loading model from {}'.format(model_path))
     checkpoint = torch.load(model_path)
@@ -97,7 +95,7 @@ if __name__ == '__main__':
                                 nodule_size_ranges = nodule_size_ranges,
                                 num_nodules = num_nodule_in_val_set,
                                 series_list_path = val_set_path,
-                                crop_settings = fl_config['client']['dataset']['params']['crop_setting'],
+                                crop_settings = fl_config['client']['dataset']['params']['crop_settings'],
                                 cache_folder = cache_folder,
                                 reset_data_in_disk = True)
     
@@ -106,12 +104,11 @@ if __name__ == '__main__':
         result_save_path = os.path.join(os.path.dirname(os.path.dirname(model_path)), 'result.csv')
     if not result_save_path.endswith('.csv'):
         result_save_path = result_save_path + '.csv'
-    result_csv_path = result_save_path.replace('.csv', '_thrs{:.2f}.csv'.format(iou_threshold))
-    
+    result_csv_path = result_save_path
     logger.info("Saving result to '{}'".format(result_csv_path))
     # Validating
-    stage1_results = test(model, val_dataset, iou_threshold, device = device, log_metric = True)
-    write_lines(result_csv_path, 'iou_threshold,val_txt_path')
-    write_lines(result_csv_path, '{:.2f},{}'.format(iou_threshold, val_set_path))
+    stage1_results = test(model, val_dataset, device = device, log_metric = True)
+    write_lines(result_csv_path, 'val_txt_path')
+    write_lines(result_csv_path, val_set_path)
     nodule_metrics = NoduleMetrics(stage1_results)
     write_lines(result_csv_path, nodule_metrics.generate_metric_csv_lines())
