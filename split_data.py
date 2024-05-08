@@ -282,3 +282,11 @@ if __name__ == '__main__':
                 f.write(header)
                 for idx in samples:
                     f.write(f'{series_list[idx][0]},{series_list[idx][1]}\n')
+                    
+    for mode, samples_list in zip(['train', 'val', 'test'], [train_clients_samples, val_clients_samples, test_clients_samples]):
+        save_path = f'{save_root}/all_client_{mode}.txt'
+        with open(save_path, 'a') as f:
+            f.write(header)
+            for i in range(n_clients):
+                for idx in samples_list[i]:
+                    f.write(f'{series_list[idx][0]},{series_list[idx][1]}\n')

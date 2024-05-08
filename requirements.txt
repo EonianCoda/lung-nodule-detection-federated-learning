@@ -6,3 +6,4 @@ rich
 tqdm
 matplotlib
 cupy-cuda11x
+psutil

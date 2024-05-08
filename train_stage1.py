@@ -47,6 +47,7 @@ def get_parser():
     parser.add_argument('--apply_ema', action='store_true', default=False)
     parser.add_argument('--ema_decay', type=float, default=0.999)
     parser.add_argument('--resume_model_path', type=str, default='')
+    parser.add_argument('--pretrained_model_path', type=str, default='')
     parser.add_argument('--mixed_precision', action='store_true', default=False)
     parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--pin_memory', action='store_true', default=False)
@@ -86,6 +87,7 @@ if __name__ == '__main__':
     learning_rate = args.lr * batch_size
     apply_ema = args.apply_ema
     resume_model_path = args.resume_model_path
+    pretrained_model_path = args.pretrained_model_path
     best_model_metric_name = args.best_model_metric_name
     mixed_precision = args.mixed_precision
     num_workers = args.num_workers
@@ -107,6 +109,7 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # Build model and optimizer
     if resume_model_path != '': # Resume model
+        print(f'Resume model from {resume_model_path}')
         checkpoint = torch.load(resume_model_path, map_location = device)
         if 'model_structure' in checkpoint:
             model = checkpoint['model_structure']
@@ -128,6 +131,21 @@ if __name__ == '__main__':
         
         exp_name = os.path.basename(os.path.dirname(resume_model_path))
         exp_root = os.path.dirname(os.path.dirname(resume_model_path))
+    elif pretrained_model_path != '': # Pretrained model
+        print(f'Load pretrained model from {pretrained_model_path}')
+        checkpoint = torch.load(pretrained_model_path, map_location = device)
+        if 'model_structure' in checkpoint:
+            model = checkpoint['model_structure']
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+        start_epoch = 0
+        end_epoch = num_epoch
+        # Register EMA
+        if apply_ema:
+            ema = EMA(model, decay = args.ema_decay)  
+            ema.register()
+        else:
+            ema = None
     else: 
         # Build new model
         model = build_instance(args.model, {'normalization': args.normalization})
