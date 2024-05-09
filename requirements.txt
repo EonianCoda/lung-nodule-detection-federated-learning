@@ -1,9 +1,14 @@
 opencv-python 
 connected-components-3d
-albumentations
 tensorboard
 rich
 tqdm
 matplotlib
-cupy-cuda11x
 psutil
+SimpleITK
+scipy
+scikit-image
+scikit-learn
+pandas
+PyYAML
+cupy-cuda12x

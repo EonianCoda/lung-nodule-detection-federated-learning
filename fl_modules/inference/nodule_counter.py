@@ -1,10 +1,11 @@
 import os
 import json
 import logging
+import numpy as np
 from multiprocessing import Pool
-from typing import Dict, Union, List
+from typing import Dict, Union, List, Tuple
 
-from fl_modules.dataset.utils import get_nodule_type, load_series_list
+from fl_modules.dataset.utils import load_series_list
 from fl_modules.inference.utils import load_gt_mask_maps, get_3d_connected_componment
 
 LAST_MODIFIED_TIME = 'last_modified_time'
@@ -14,10 +15,20 @@ NODULE_START_SLICE_IDS = 'nodule_start_slice_ids'
 
 logger = logging.getLogger(__name__)
 
+def get_nodule_type(nodule_size: int, nodule_size_ranges: Dict[str, Tuple[int, int]]) -> str:
+    for nodule_type, size_range in nodule_size_ranges.items():
+        lower_bound, upper_bound = size_range
+        if upper_bound == -1:
+            upper_bound = nodule_size + 1
+
+        if nodule_size > lower_bound and nodule_size <= upper_bound:
+            return nodule_type
+
 class NoduleCounter:
     @staticmethod
     def count_and_analyze_nodules_of_multi_series(series_list_path: str, 
                                                   nodule_size_ranges: dict,
+                                                  min_size: int = 0,
                                                   mode: str = 'sum') -> Union[Dict[str, int], List[Dict[str, int]]]:
         """
         Returns: dict[str, int]
@@ -35,7 +46,7 @@ class NoduleCounter:
             gt_mask_maps_paths.append(gt_mask_maps_path)
 
         pool = Pool(os.cpu_count() // 2)
-        target_args = [(gt_maks_maps_path, nodule_size_ranges) for gt_maks_maps_path in gt_mask_maps_paths]
+        target_args = [(gt_maks_maps_path, nodule_size_ranges, min_size) for gt_maks_maps_path in gt_mask_maps_paths]
         try:
             nodule_counts_of_series = pool.starmap(NoduleCounter.count_and_analyze_nodules, target_args)
         finally:
@@ -56,7 +67,7 @@ class NoduleCounter:
             raise NotImplementedError
 
     @staticmethod
-    def count_and_analyze_nodules(gt_mask_map_path: str, nodule_size_ranges: dict) -> Dict[str, int]:
+    def count_and_analyze_nodules(gt_mask_map_path: str, nodule_size_ranges: dict, min_size: int = 0) -> Dict[str, int]:
         """Count and analyze nodules in given groud truth mask map
         Args:
             gt_mask_map_path: str
@@ -79,6 +90,11 @@ class NoduleCounter:
                 gt_valid_nodule_sizes = nodule_count[NODULE_SIZE]
             else:
                 gt_valid_nodule_sizes = NoduleCounter.get_and_write_num_of_nodules(gt_mask_map_path, cache_path)
+        
+        gt_valid_nodule_sizes = np.array(gt_valid_nodule_sizes)
+        valid_mask = (gt_valid_nodule_sizes >= min_size)
+        gt_valid_nodule_sizes = gt_valid_nodule_sizes[valid_mask]
+        gt_valid_nodule_sizes = gt_valid_nodule_sizes.tolist()
         
         # Count number of nodule of differenct nodule type
         rs = {nodule_type: 0 for nodule_type in nodule_size_ranges.keys()}

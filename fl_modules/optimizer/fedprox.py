@@ -94,7 +94,6 @@ class FedProx(Optimizer):
         for param_group in self.param_groups:
             param_group['w_old'] = copy_params
 
-
 class FedProxAdam(Optimizer):
     """FedProxAdam optimizer."""
 

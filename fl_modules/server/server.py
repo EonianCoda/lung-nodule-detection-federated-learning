@@ -9,14 +9,25 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 import shutil
 from fl_modules.client.client import Client
-from fl_modules.utilities.nodule_metrics import NoduleMetrics
-from fl_modules.utilities import build_instance, build_class
-from fl_modules.utilities.draw_fig import MetricDrawer
-from fl_modules.inference.utils import compute_recall, compute_precision, compute_f1_score
-from fl_modules.model.ema import EMA
-
+from fl_modules.utilities import build_instance, build_class, build_config
+from fl_modules.optimizer.ema import EMA
 
 logger = logging.getLogger(__name__)
+
+def add_weight_decay(net, weight_decay):
+    """no weight decay on bias and normalization layer
+    """
+    decay, no_decay = [], []
+    for name, param in net.named_parameters():
+        if not param.requires_grad:
+            continue  # skip frozen weights
+        # skip bias and bn layer
+        if ".norm" in name:
+            no_decay.append(param)
+        else:
+            decay.append(param)
+    return [{"params": no_decay, "weight_decay": 0.0},
+            {"params": decay, "weight_decay": weight_decay}]
 
 class Server:
     def __init__(self, 
@@ -28,7 +39,6 @@ class Server:
         self.config = config
         self.clients_config = clients_config
         self.server_config = config['server']
-        self.enable_progress_bar = self.config['common']['enable_progress_bar']
         self.save_local_state = self.config['common']['save_local_state']
         # Resume Options
         self.resume = resume
@@ -43,12 +53,16 @@ class Server:
         
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
+        self.total_rounds = self.config['server']['total_rounds']
+        self.start_val_round = self.config['server']['start_val_round']
+        self.val_interval = self.config['server']['val_interval']
+        self.epoch_per_round = self.config['server']['epoch_per_round']
+        
     def start(self):
         self._init_training()
-        total_rounds = self.config['server']['total_rounds']
         # Training and validation
-        for round_number in range(self.start_round, total_rounds):
-            logger.info(f"Round {round_number}/{total_rounds - 1}")
+        for round_number in range(self.start_round, self.total_rounds):
+            logger.info(f"Round {round_number}/{self.total_rounds - 1}")
             self.one_round(round_number)
             
         logger.info('Best model metric: {:.4f} at round {}'.format(self.best_model_metric, self.best_model_round))
@@ -57,18 +71,14 @@ class Server:
         self.testing_and_save_metrics()
         self.writer.close()
         
-        # Draw figure
-        drawer = MetricDrawer(join(self.exp_folder, 'tensorboard'))
-        figure_save_folder = join(self.exp_folder, 'figure')
-        os.makedirs(figure_save_folder, exist_ok = True)
-        drawer.save_figure(figure_save_folder)
-        
         if not self.save_local_state:
             for client_name, client in self._clients.items():
                 if os.path.exists(join(client.client_folder, 'model')):
                     shutil.rmtree(join(client.client_folder, 'model'))
                 if os.path.exists(join(client.client_folder, 'optimizer')):
                     shutil.rmtree(join(client.client_folder, 'optimizer'))
+                if os.path.exists(join(client.client_folder, 'scheduler')):
+                    shutil.rmtree(join(client.client_folder, 'scheduler'))
                 if os.path.exists(join(client.client_folder, 'ema')):
                     shutil.rmtree(join(client.client_folder, 'ema'))
                 if os.path.exists(join(self.server_folder, 'model')):
@@ -92,31 +102,34 @@ class Server:
             if hasattr(self.optimizer, 'update_global_weights'):
                 self.optimizer.update_global_weights()
             # Training
-            train_metrics = client.train(round_number, model = self.model, optimizer = self.optimizer, ema = self.ema)
+            train_metrics = client.train(round_number, num_epoch = self.epoch_per_round, model = self.model, optimizer = self.optimizer, ema = self.ema)
             client_train_metrics[client_name] = train_metrics
             for metric_name, metric_value in train_metrics.items():
                 logger.info(f"Client '{client.name}' train metric '{metric_name}' = {metric_value:.4f}")
                 
-            # Validation
             if self.apply_ema:
-                self.ema.apply_shadow()
-            
-            # For scaffold, we need to update control variate before validation
-            if hasattr(self.optimizer, 'update_control_variate'):
-                self.optimizer.update_control_variate()
+                self.ema.apply_shadow(need_backup=False)
                 
-            val_metrics = client.val(round_number, model = self.model, is_global = False)
-            client_val_local_metrics[client_name] = val_metrics
-            for metric_name, metric_value in val_metrics.items():
-                logger.info(f"Client '{client.name}' val metric '{metric_name}' = {metric_value:.4f}")
-            
             # Save client model, optimizer and ema state
             client.save_model_state(self.model, round_number)           
             if self.optimizer_aggregaion_strategy != 'reset':
                 client.save_optimizer_state(self.optimizer, round_number)
             if self.apply_ema:
                 client.save_ema_state(self.ema, round_number)
-                self.ema.restore()
+            
+            # Validation
+            if round_number >= self.start_val_round:
+                # For scaffold, we need to update control variate before validation
+                if hasattr(self.optimizer, 'update_control_variate'):
+                    self.optimizer.update_control_variate()
+                    
+                val_metrics = client.val(round_number, model = self.model, is_global = False, detection_postprocess = self.val_det_postprocess)
+                client_val_local_metrics[client_name] = val_metrics
+                for metric_name, metric_value in val_metrics.items():
+                    logger.info(f"Client '{client.name}' val metric '{metric_name}' = {metric_value:.4f}")
+                
+                # if self.apply_ema:
+                #     self.ema.restore()
                 
         self.write_tensorboard(client_train_metrics, round_number, 'train')
         self.write_tensorboard(client_val_local_metrics, round_number, 'val_local')
@@ -125,14 +138,15 @@ class Server:
         self.apply_aggregation(round_number)
         
         # Use aggregated model to validate
-        logger.info(f"Use aggregated model to validate")
-        self.load_working_state(round_number, list(self._clients.values())[0])
-        for client_name, client in self._clients.items():
-            val_metrics = client.val(round_number, model = self.model, is_global = True)
-            client_val_global_metrics[client_name] = val_metrics
-            for metric_name, metric_value in val_metrics.items():
-                logger.info(f"Client '{client.name}' val metric '{metric_name}' = {metric_value:.4f}")
-        self.write_tensorboard(client_val_global_metrics, round_number, 'val_global')
+        if round_number >= self.start_val_round:
+            logger.info(f"Use aggregated model to validate")
+            self.load_working_state(round_number, list(self._clients.values())[0])
+            for client_name, client in self._clients.items():
+                val_metrics = client.val(round_number, model = self.model, is_global = True)
+                client_val_global_metrics[client_name] = val_metrics
+                for metric_name, metric_value in val_metrics.items():
+                    logger.info(f"Client '{client.name}' val metric '{metric_name}' = {metric_value:.4f}")
+            self.write_tensorboard(client_val_global_metrics, round_number, 'val_global')
         
         # Save global model and optimizer
         self.save_global_state(join(self.server_folder, 'model', f'{round_number}.pth'))
@@ -306,26 +320,13 @@ class Server:
         best_model_state_dict = torch.load(join(self.exp_folder, 'best_model.pth'), map_location = self.device)['model_state_dict']
         self.model.load_state_dict(best_model_state_dict)
         
-        testing_save_path = join(self.exp_folder, 'testing_result.csv')
+        # testing_save_path = join(self.exp_folder, 'testing_result.csv')
         # Testing
         client_test_metrics = dict()
         for client_name, client in self._clients.items():
-            test_metrics = client.test(model = self.model)
+            test_metrics = client.test(model = self.model, detection_postprocess = self.test_det_postprocess)
             client_test_metrics[client.name] = test_metrics
             
-            # Write metrics to csv file for each client
-            metrics = NoduleMetrics(test_metrics)
-            series_list_path = os.path.basename(client.test_series_list_path)
-            
-            params = copy.deepcopy(self.server_config['actions']['test']['params'])
-            if params is None:
-                params = dict()    
-            params['series_list_path'] = series_list_path
-            if 'log_metric' in params:
-                params.pop('log_metric')
-            params['client_name'] = client_name
-            metrics.write_metric_csv(params, testing_save_path)
-        
         # Calculate average metrics of different nodule types
         sum_test_metrics = dict()
         for client_name, metrics in client_test_metrics.items():
@@ -335,36 +336,26 @@ class Server:
                 for metric_key in ['tp', 'fp', 'fn', 'tn']:
                     sum_test_metrics[nodule_type][metric_key] += metrics[nodule_type][metric_key]
                     
-        # Calculate recall, precision, f1_score
-        for metrics in sum_test_metrics.values():
-            metrics['recall'] = compute_recall(metrics['tp'], metrics['fn'])
-            metrics['precision'] = compute_precision(metrics['tp'], metrics['fp'])
-            metrics['f1_score'] = compute_f1_score(metrics['recall'], metrics['precision'])
-        
-        # Write average metrics to csv file
-        metrics = NoduleMetrics(sum_test_metrics)
-        params = copy.deepcopy(self.server_config['actions']['test']['params'])
-        if params == None:
-            params = dict()
-        params['series_list_path'] = '+'.join([os.path.basename(client.test_series_list_path) for client in self._clients.values()])
-        params['client_name'] = 'server'
-        if 'log_metric' in params:
-            params.pop('log_metric')
-        metrics.write_metric_csv(params, testing_save_path)
-        
-        self.writer.add_hparams(hparam_dict=params, metric_dict = dict(sum_test_metrics['all']), run_name = 'testing_result')
-        
     def _init_training(self):
         self._init_model()
         self._init_optimizer()
+        self._init_scheduler()
         self._init_ema()
         self._init_clients()
         self._init_aggregation()
         self._init_best_model_metric()
+        self._init_det_postprocess()
         self.writer = SummaryWriter(log_dir = join(self.exp_folder, 'tensorboard'))
     
+    def _init_det_postprocess(self):
+        self.val_det_postprocess = build_instance(self.server_config['det_postprocess']['val']['template'], self.server_config['det_postprocess']['val']['params'])
+        self.test_det_postprocess = build_instance(self.server_config['det_postprocess']['test']['template'], self.server_config['det_postprocess']['test']['params'])
+    
     def _init_model(self):
-        self.model = build_instance(self.server_config['model']['template'], self.server_config['model']['params'])
+        model_config = self.server_config['model']['params']
+        model_config = build_config(model_config)
+        model_config['device'] = self.device
+        self.model = build_instance(self.server_config['model']['template'], model_config)
         self.global_model = join(self.working_folder, 'global_model.pt')
         
         # Load pretrained model
@@ -385,6 +376,7 @@ class Server:
         self.model.to(self.device)
     
     def _init_optimizer(self):
+        logger.info('Initialize optimizer')
         self.optimizer_aggregaion_strategy = self.server_config['aggregation']['optimizer_aggregate_strategy']
         self.optimizer = self.build_optimizer(self.model)
         
@@ -398,14 +390,29 @@ class Server:
             self.global_optimizer = None
     
     def build_optimizer(self, model):
+        # Add weight decay
+        params = add_weight_decay(model, self.server_config['optimizer']['params']['weight_decay'])
         optimizer_template = build_class(self.server_config['optimizer']['template'])
-        params = copy.deepcopy(self.server_config['optimizer']['params'])
-        return optimizer_template(model.parameters(), **params)
+        kwargs = copy.deepcopy(self.server_config['optimizer']['params'])
+        return optimizer_template(params, **kwargs)
     
+    def _init_scheduler(self):
+        logger.info('Initialize scheduler')
+        self.scheduler = self.build_scheduler(self.optimizer)
+    
+    def build_scheduler(self, optimizer):
+        lr = self.server_config['optimizer']['params']['lr']
+        after_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.total_rounds, eta_min=lr * 0.1)
+        scheduler_template = build_class(self.server_config['scheduler']['template'])
+        scheduler = scheduler_template(optimizer, after_scheduler=after_scheduler, **self.server_config['scheduler']['params'])
+        return scheduler
+        
     def _init_ema(self):
+        logger.info('Initialize EMA')
         self.apply_ema = self.server_config['ema']['apply']
         if self.apply_ema:
-            self.ema = EMA(self.model, **self.server_config['ema']['params'])
+            warmup_steps = self.start_val_round * 80
+            self.ema = EMA(self.model, warmup_steps = warmup_steps, **self.server_config['ema']['params'])
             self.ema.register()
             self.global_ema = join(self.working_folder, 'global_ema.pt')
             if not self.resume or (self.resume and not os.path.exists(self.global_ema)):
@@ -414,37 +421,35 @@ class Server:
             self.ema = None
     
     def _init_clients(self):
+        logger.info('Initialize clients')
         # Prepare training, validation and testing function
+        shared_params = self.server_config['actions']['shared_params']
+        
         train_fn = build_class(self.server_config['actions']['train']['template'])
         train_fn_params = self.server_config['actions']['train']['params'] 
+        train_fn_params.update(copy.deepcopy(shared_params))
         
         val_fn = build_class(self.server_config['actions']['val']['template'])
         val_fn_params = self.server_config['actions']['val']['params']
+        val_fn_params.update(copy.deepcopy(shared_params))
         
         test_fn = build_class(self.server_config['actions']['test']['template'])
         test_fn_params = self.server_config['actions']['test']['params']
+        test_fn_params.update(copy.deepcopy(shared_params))
         
         # Prepare clients
         clients = dict()
         self.num_of_client = len(self.clients_config)
         for client_name in self.clients_config.keys():
-            # Update client config
-            default_dataset_params_config = copy.deepcopy(self.config['client']['dataset']['params'])
-            dataset_params_config = dict()
-            for identifier in self.clients_config[client_name]['dataset_params'].keys():
-                params = copy.deepcopy(default_dataset_params_config)
-                params.update(self.clients_config[client_name]['dataset_params'][identifier])
-                dataset_params_config[identifier] = params
-                
+            logger.info(f"Initialize client '{client_name}'")
             client = Client(name = client_name, 
                             client_folder = join(self.exp_folder, 'client', client_name),
                             client_config = self.config['client'],
-                            dataset_params_config = dataset_params_config, 
+                            dataset_params_config = self.clients_config[client_name]['dataset_params'], 
                             model = self.model,
                             optimizer = self.optimizer,
                             ema = self.ema,
-                            device = self.device,
-                            enable_progress_bar = self.enable_progress_bar)
+                            device = self.device)
             client.prepare()
             
             # Build action
@@ -461,6 +466,7 @@ class Server:
     def _init_aggregation(self):
         """Initialize aggregation function
         """
+        logger.info('Initialize aggregation function')
         model = build_instance(self.server_config['model']['template'], self.server_config['model']['params'])
         # If optimizer_aggregaion_strategy is 'continue_global', we need to aggregate optimizer
         if self.optimizer_aggregaion_strategy == 'continue_global':

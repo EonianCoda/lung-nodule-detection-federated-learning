@@ -1,0 +1,26 @@
+COA:
+  dataset_params:
+    train:
+      series_list_path: './data/test_bug.txt'
+    val:
+      series_list_path: './data/test_bug.txt'
+    test:
+      series_list_path: './data/test_bug.txt'
+
+COB:
+  dataset_params:
+    train:
+      series_list_path: './data/test_bug.txt'
+    val:
+      series_list_path: './data/test_bug.txt'
+    test:
+      series_list_path: './data/test_bug.txt'
+
+COC:
+  dataset_params:
+    train:
+      series_list_path: './data/test_bug.txt'
+    val:
+      series_list_path: './data/test_bug.txt'
+    test:
+      series_list_path: './data/test_bug.txt'

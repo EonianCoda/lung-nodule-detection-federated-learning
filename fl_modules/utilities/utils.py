@@ -8,11 +8,15 @@ from tqdm import tqdm
 from importlib import import_module
 from typing import Optional, Union, Dict, Any
 
-
 def get_local_time_in_taiwan() -> datetime.datetime:
     utc_now = datetime.datetime.utcnow()
     taiwan_now = utc_now + datetime.timedelta(hours=8) # Taiwan in UTC+8
     return taiwan_now
+
+def get_local_time_str_in_taiwan() -> str:
+    cur_time = get_local_time_in_taiwan()
+    timestamp = "[%d-%02d-%02d-%02d%02d]" % (cur_time.year, cur_time.month, cur_time.day, cur_time.hour, cur_time.minute)
+    return timestamp
 
 def reset_working_dir(path: str):
     if os.path.exists(path):
@@ -74,11 +78,12 @@ def gen_log_level(level:str):
         return logging.WARNING
     else:
         raise ValueError("Should given valid log level")
-    
-def get_progress_bar(identifer: str, total_steps: int) -> tqdm:
+
+def get_progress_bar(identifer: str, total_steps: int, initial_step: int = 0) -> tqdm:
     """Get the progress bar
     """
-    progress_bar = tqdm(total = total_steps, 
+    progress_bar = tqdm(initial = initial_step,
+                        total = total_steps, 
                         desc = "{:10s}".format(identifer), 
                         bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
     return progress_bar
@@ -96,3 +101,10 @@ def init_seed(seed: int):
         torch.cuda.manual_seed(seed)
     else:
         torch.manual_seed(seed)
+        
+def build_config(config: Dict[str, Any]):
+    for c in config.keys():
+        if isinstance(config[c], dict) and 'template' in config[c].keys():
+            template = config[c]['template']
+            config[c] = build_instance(template, config[c]['params'])
+    return config
