@@ -1,7 +1,6 @@
 import math
 import torch
 from torch.optim.optimizer import Optimizer
-from torch import inf
 
 class AdamW(Optimizer):
     r"""Implements AdamW algorithm.
