@@ -64,10 +64,6 @@ def get_args():
     parser.add_argument('--pad_water', action='store_true', default=False, help='pad water or not')
     # Data Augmentation
     parser.add_argument('--tp_ratio', type=float, default=0.6, help='positive ratio in instance crop')
-    parser.add_argument('--use_crop', action='store_true', default=False, help='use crop augmentation')
-    parser.add_argument('--use_itk_rotate', action='store_true', default=False, help='use itk rotate')
-    parser.add_argument('--my_rot', action='store_true', default=False, help='use our rotate')
-    parser.add_argument('--crop_designed', action='store_true', default=False, help='use designed crop')
     parser.add_argument('--rand_rot', nargs='+', type=int, default=[30, 0, 0], help='random rotate')
     parser.add_argument('--use_rand_spacing', action='store_true', default=False, help='use random spacing')
     parser.add_argument('--rand_spacing', nargs='+', type=float, default=[0.9, 1.1], help='random spacing range, [min, max]')
@@ -286,12 +282,9 @@ def build_train_augmentation(args, crop_size: Tuple[int, int, int], pad_value: f
         
     transform_list_train = [transform.RandomFlip(p=0.5, flip_depth=True, flip_height=True, flip_width=True)]
     transform_list_train.append(transform.RandomRotate90(p=0.5, rot_xy=True, rot_xz=rot_zx, rot_yz=rot_zy))
-    if args.use_crop:
-        transform_list_train.append(transform.RandomCrop(p=0.5, crop_ratio=0.95, ctr_margin=10, pad_value=pad_value))
-        
     transform_list_train.append(transform.CoordToAnnot())
                             
-    logger.info('Augmentation: random flip: True, random roation90: {}, random crop: {}'.format([True, rot_zy, rot_zx], args.use_crop))
+    logger.info('Augmentation: random flip: True, random roation90: {}'.format([True, rot_zy, rot_zx]))
     train_transform = torchvision.transforms.Compose(transform_list_train)
     return train_transform
 
@@ -436,11 +429,13 @@ if __name__ == '__main__':
                             device = device,
                             image_spacing = IMAGE_SPACING,
                             series_list_path=args.val_set,
-                            exp_folder=exp_folder,
+                            exp_folder=os.path.join(exp_folder, 'val'),
                             epoch = epoch,
                             nodule_type_diameters=NODULE_TYPE_DIAMETERS,
                             min_d=args.min_d,
+                            apply_lobe=args.apply_lobe,
                             min_size=args.min_size,
+                            enable_progress_bar=True,
                             nodule_size_mode=args.nodule_size_mode)
             
             early_stopping.step(val_metrics, epoch)
@@ -468,10 +463,12 @@ if __name__ == '__main__':
                             image_spacing = IMAGE_SPACING,
                             series_list_path=args.test_set,
                             exp_folder=exp_folder,
+                            apply_lobe=args.apply_lobe,
                             epoch = 'test_best_{}'.format(target_metric),
                             nodule_type_diameters=NODULE_TYPE_DIAMETERS,
                             min_d=args.min_d,
                             min_size=args.min_size,
+                            enable_progress_bar=True,
                             nodule_size_mode=args.nodule_size_mode)
         
         write_metrics(test_metrics, epoch, 'test/best_{}'.format(target_metric), writer)
@@ -489,20 +486,23 @@ if __name__ == '__main__':
     for (target_metric, model_path), best_epoch in zip(early_stopping.get_best_model_paths().items(), early_stopping.best_epoch):
         load_states(model_path, device, model)
         logger.info('Load best model from "{}"'.format(model_path))
-        train_infer_metrics = val(args = args,
+        train_infer_metrics = val(mixed_precision=args.val_mixed_precision,
+                                memory_format=args.memory_format,
+                                patch_label_type='none',
+                                froc_det_thresholds=args.test_froc_det_thresholds,
+                                iou_threshold=args.test_iou_threshold,
                                 model = model,
                                 detection_postprocess=test_det_postprocess,
-                                val_loader = train_infer_loader,
+                                dataloader = val_loader, 
                                 device = device,
                                 image_spacing = IMAGE_SPACING,
-                                series_list_path=args.train_set,
-                                nodule_type_diameters=NODULE_TYPE_DIAMETERS,
+                                series_list_path=args.test_set,
                                 exp_folder=exp_folder,
                                 epoch = 'infer_best_{}'.format(target_metric),
+                                nodule_type_diameters=NODULE_TYPE_DIAMETERS,
                                 min_d=args.min_d,
                                 min_size=args.min_size,
-                                nodule_size_mode=args.nodule_size_mode,
-                                val_type = 'test')
+                                nodule_size_mode=args.nodule_size_mode)
         write_metrics(train_infer_metrics, epoch, 'infer_train/best_{}'.format(target_metric), writer)
         with open(os.path.join(infer_save_dir, 'infer_train_best_{}.txt'.format(target_metric)), 'w') as f:
             f.write('Best epoch: {}\n'.format(best_epoch))

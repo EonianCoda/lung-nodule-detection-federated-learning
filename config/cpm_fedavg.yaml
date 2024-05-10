@@ -4,10 +4,10 @@ common:
   save_local_state: False
   
 server:
-  total_rounds: 300
-  start_val_round: 1
+  total_rounds: 200
+  start_val_round: 30
   val_interval: 1
-  epoch_per_round: 1
+  epoch_per_round: 2
   best_model_metric_name: froc_mean_recall
   
   model: 
@@ -77,7 +77,7 @@ server:
       memory_format: channels_first
       mixed_precision: True
       enable_progress_bar: True
-      log_metric: True
+      log_metric: False
       nodule_type_diameters:
         benign: [0, 4]
         probably_benign: [4, 6]

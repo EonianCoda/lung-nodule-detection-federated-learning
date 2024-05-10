@@ -42,7 +42,7 @@ def get_args():
     parser.add_argument('--val_iou_threshold', type=float, default=0.1, help='iou threshold for validation')
     parser.add_argument('--val_fixed_prob_threshold', type=float, default=0.65, help='fixed probability threshold for validation')
     # detection-hyper-parameters
-    parser.add_argument('--det_post_process_class', type=str, default='networks.detection_post_process')
+    parser.add_argument('--det_post_process_class', type=str, default='fl_modules.model.cpm_net.detection_post_process')
     parser.add_argument('--det_topk', type=int, default=60, help='topk detections')
     parser.add_argument('--det_nms_threshold', type=float, default=0.05, help='detection nms threshold')
     parser.add_argument('--det_nms_topk', type=int, default=20, help='detection nms topk')
@@ -184,12 +184,14 @@ if __name__ == '__main__':
         
         metrics = val(mixed_precision=args.val_mixed_precision,
                         memory_format=args.memory_format,
+                        iou_threshold=args.val_iou_threshold,
                         patch_label_type=args.patch_label_type,
                         froc_det_thresholds=args.froc_det_thresholds,
                         model = model,
                         detection_postprocess=detection_postprocess,
                         dataloader = val_loader, 
                         device = device,
+                        apply_lobe=args.apply_lobe,
                         image_spacing = IMAGE_SPACING,
                         series_list_path=args.val_set,
                         exp_folder=exp_folder,
@@ -197,7 +199,8 @@ if __name__ == '__main__':
                         nodule_type_diameters=NODULE_TYPE_DIAMETERS,
                         min_d=args.min_d,
                         min_size=args.min_size,
-                        nodule_size_mode=args.nodule_size_mode)
+                        nodule_size_mode=args.nodule_size_mode,
+                        enable_progress_bar=True)
         
         save_txt_path = os.path.join(exp_folder, 'val_metrics_{}.txt'.format(save_folder_name))
         max_length = max([len(key) for key in metrics.keys()])

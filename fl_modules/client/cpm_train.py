@@ -39,9 +39,6 @@ def train(mixed_precision: bool,
           enable_progress_bar = False,
           log_metric = False,
           **kwargs) -> Dict[str, float]:
-    
-    # print(device)
-    model.to(device)
     model.train()
     avg_cls_pos_loss = AverageMeter()
     avg_cls_neg_loss = AverageMeter()

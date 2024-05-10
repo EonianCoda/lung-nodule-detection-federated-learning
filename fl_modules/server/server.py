@@ -118,7 +118,7 @@ class Server:
                 client.save_ema_state(self.ema, round_number)
             
             # Validation
-            if round_number >= self.start_val_round:
+            if round_number >= self.start_val_round and round_number % self.val_interval == 0:
                 # For scaffold, we need to update control variate before validation
                 if hasattr(self.optimizer, 'update_control_variate'):
                     self.optimizer.update_control_variate()
@@ -132,17 +132,18 @@ class Server:
                 #     self.ema.restore()
                 
         self.write_tensorboard(client_train_metrics, round_number, 'train')
-        self.write_tensorboard(client_val_local_metrics, round_number, 'val_local')
+        if round_number >= self.start_val_round and round_number % self.val_interval == 0:
+            self.write_tensorboard(client_val_local_metrics, round_number, 'val_local')
         
         # Aggregate
         self.apply_aggregation(round_number)
         
         # Use aggregated model to validate
-        if round_number >= self.start_val_round:
+        if round_number >= self.start_val_round and round_number % self.val_interval == 0:
             logger.info(f"Use aggregated model to validate")
             self.load_working_state(round_number, list(self._clients.values())[0])
             for client_name, client in self._clients.items():
-                val_metrics = client.val(round_number, model = self.model, is_global = True)
+                val_metrics = client.val(round_number, model = self.model, is_global = True, detection_postprocess = self.val_det_postprocess)
                 client_val_global_metrics[client_name] = val_metrics
                 for metric_name, metric_value in val_metrics.items():
                     logger.info(f"Client '{client.name}' val metric '{metric_name}' = {metric_value:.4f}")
@@ -229,7 +230,11 @@ class Server:
         
         # Load ema state
         if self.apply_ema:
-            self.ema.load_state_dict(torch.load(self.global_ema, map_location = self.device))
+            if round_number == 0:
+                self.ema.load_state_dict(torch.load(self.global_ema, map_location = self.device))
+            else:
+                client.load_ema_state(self.ema, round_number - 1, self.device) # load warmup state
+            self.ema.register() # use new model weight as initial weight
         
     def save_global_state(self, save_path: str) -> None:
         """Save global state to file
@@ -307,12 +312,6 @@ class Server:
                 else:
                     avg_metrics[metric_name] += metric_value                    
 
-        # if is_val:
-        #     # Reset recall, precision, f1_score based on weighted sum of tp, fp, fn, tn of different clients
-        #     avg_metrics['recall'] = compute_recall(avg_metrics['tp'], avg_metrics['fn'])
-        #     avg_metrics['precision'] = compute_precision(avg_metrics['tp'], avg_metrics['fp'])
-        #     avg_metrics['f1_score'] = compute_f1_score(avg_metrics['recall'], avg_metrics['precision'])
-            
         return avg_metrics
         
     def testing_and_save_metrics(self):

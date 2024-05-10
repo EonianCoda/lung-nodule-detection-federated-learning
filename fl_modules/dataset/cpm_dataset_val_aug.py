@@ -9,10 +9,10 @@ from torch.utils.data import Dataset
 import torchvision
 import copy
 import math
-logger = logging.getLogger(__name__)
+from fl_modules.dataset.transform.ctr_transform import OffsetMinusCTR, RotateCTR, TransposeCTR
+from fl_modules.dataset.transform.feat_transform import FlipFeatTransform, Rot90FeatTransform, TransposeFeatTransform
 
-from transform.ctr_transform import OffsetMinusCTR, RotateCTR, TransposeCTR
-from transform.feat_transform import FlipFeatTransform, Rot90FeatTransform, TransposeFeatTransform
+logger = logging.getLogger(__name__)
 
 class FlipTransform():
     def __init__(self, flip_depth=True, flip_height=True, flip_width=True):

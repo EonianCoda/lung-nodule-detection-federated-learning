@@ -4,7 +4,9 @@ python train_stage1.py --extra_info CO2_local_mixP_more_slice --train_set client
 
 
 python main.py --exp_name test_bug --config_path ./config/cpm_fedavg.yaml --clients_config_path ./config/clients/cpm_clients.yaml
-python main.py --exp_name test_bug --config_path ./config/cpm_fedavg.yaml --clients_config_path ./config/clients/cpm_clients_test_bug.yaml
+python main.py --exp_name fedavg_baseline --config_path ./config/cpm_fedavg.yaml --clients_config_path ./config/clients/cpm_clients.yaml 
 
 
 python cpm_train.py --train_set ./data/pretrained_train.txt --val_set ./data/pretrained_val.txt --test_set ./data/all_client_test.txt --mixed_precision --val_mixed_precision --exp_name PT_NoX4_bs5n8TPr06_posIg5_numNeg-1_lrGa01_iouL4_shapeL1_rot30 --start_val_epoch 300 --warmup_epochs 20 --val_interval 10 --epochs 500 --start_val_epoch 300 --model_class fl_modules.model.cpm_net.cpm_net --ema_warmup_epochs 300 --early_end_epoch 400
+
+python main.py --exp_name fedavg_baseline --config_path ./config/cpm_fedavg.yaml --clients_config_path ./config/clients/cpm_clients.yaml --pretrained_model_path ./save/pretrained.pth
