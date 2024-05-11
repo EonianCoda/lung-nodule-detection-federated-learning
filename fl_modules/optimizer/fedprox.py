@@ -287,17 +287,16 @@ class FedProxAdamW(Optimizer):
             raise ValueError(f'Invalid mu value: {mu}')
         defaults = dict(lr=lr, betas=betas, eps=eps,
                         weight_decay=weight_decay, amsgrad=amsgrad, mu=mu)
-        super(AdamW, self).__init__(params, defaults)
+        super(FedProxAdamW, self).__init__(params, defaults)
 
     def __setstate__(self, state):
-        super(AdamW, self).__setstate__(state)
+        super(FedProxAdamW, self).__setstate__(state)
         for group in self.param_groups:
             group.setdefault('amsgrad', False)
             
     def update_global_weights(self):
-        copy_params = [p.clone().detach() for p in self.param_groups[0]['params'] if p.requires_grad]
-        for param_group in self.param_groups:
-            param_group['w_old'] = copy_params
+        for group in self.param_groups:
+            group['w_old'] = [p.clone().detach() for p in group['params']]
 
     @torch.no_grad()
     def step(self, closure=None):

@@ -106,6 +106,9 @@ class Server:
             client_train_metrics[client_name] = train_metrics
             for metric_name, metric_value in train_metrics.items():
                 logger.info(f"Client '{client.name}' train metric '{metric_name}' = {metric_value:.4f}")
+            
+            # Print LR
+            logger.info(f'Client {client.name} LR: {self.optimizer.param_groups[0]["lr"]}')
                 
             if self.apply_ema:
                 self.ema.apply_shadow(need_backup=False)

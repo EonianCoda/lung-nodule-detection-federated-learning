@@ -152,7 +152,7 @@ class Client:
             config = copy.deepcopy(self.dataset_config['test'])
             config = build_config(config)
             
-            self.test_set = build_instance(self.client_config['dataset']['template'], config)
+            self.test_set = build_instance(self.client_config['val_dataset']['template'], config)
             batch_size = self.val_config.get('batch_size', 1)
             num_workers = batch_size
             self.test_dataloader = DataLoader(self.test_set, 
