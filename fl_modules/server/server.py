@@ -103,18 +103,20 @@ class Server:
                 self.optimizer.update_global_weights()
             # Training
             train_metrics = client.train(round_number, num_epoch = self.epoch_per_round, model = self.model, optimizer = self.optimizer, ema = self.ema)
+            self.scheduler.step()
             client_train_metrics[client_name] = train_metrics
             for metric_name, metric_value in train_metrics.items():
                 logger.info(f"Client '{client.name}' train metric '{metric_name}' = {metric_value:.4f}")
             
-            # Print LR
-            logger.info(f'Client {client.name} LR: {self.optimizer.param_groups[0]["lr"]}')
+            # Print lr
+            logger.info(f'Client {client.name} lr: {self.optimizer.param_groups[0]["lr"]}')
                 
             if self.apply_ema:
                 self.ema.apply_shadow(need_backup=False)
                 
             # Save client model, optimizer and ema state
             client.save_model_state(self.model, round_number)           
+            client.save_scheduler_state(self.scheduler, round_number)
             if self.optimizer_aggregaion_strategy != 'reset':
                 client.save_optimizer_state(self.optimizer, round_number)
             if self.apply_ema:
@@ -231,6 +233,12 @@ class Server:
         else:
             raise ValueError(f"Unknown optimizer aggregation strategy '{self.optimizer_aggregaion_strategy}'")
         
+        # Load scheduler state
+        if round_number == 0:
+            self.scheduler.load_state_dict(torch.load(self.global_scheduler, map_location = self.device))
+        else:
+            client.load_scheduler_state(self.scheduler, round_number - 1, self.device)
+            
         # Load ema state
         if self.apply_ema:
             if round_number == 0:
@@ -401,6 +409,9 @@ class Server:
     def _init_scheduler(self):
         logger.info('Initialize scheduler')
         self.scheduler = self.build_scheduler(self.optimizer)
+        self.global_scheduler = join(self.working_folder, 'global_scheduler.pt')
+        if not self.resume or (self.resume and not os.path.exists(self.global_scheduler)):
+            torch.save(self.scheduler.state_dict(), self.global_scheduler)
     
     def build_scheduler(self, optimizer):
         lr = self.server_config['optimizer']['params']['lr']
