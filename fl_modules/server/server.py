@@ -109,8 +109,8 @@ class Server:
                 logger.info(f"Client '{client.name}' train metric '{metric_name}' = {metric_value:.4f}")
             
             # Print lr
-            logger.info(f'Client {client.name} lr: {self.optimizer.param_groups[0]["lr"]}')
-                
+            logger.info(f'Client {client.name} lr: {self.scheduler.get_lr()[0]}')
+            client_train_metrics[client_name]['lr'] = self.scheduler.get_lr()[0]
             if self.apply_ema:
                 self.ema.apply_shadow(need_backup=False)
                 
@@ -415,9 +415,8 @@ class Server:
     
     def build_scheduler(self, optimizer):
         lr = self.server_config['optimizer']['params']['lr']
-        after_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.total_rounds, eta_min=lr * 0.1)
         scheduler_template = build_class(self.server_config['scheduler']['template'])
-        scheduler = scheduler_template(optimizer, after_scheduler=after_scheduler, **self.server_config['scheduler']['params'])
+        scheduler = scheduler_template(optimizer, **self.server_config['scheduler']['params'])
         return scheduler
         
     def _init_ema(self):

@@ -4,10 +4,10 @@ common:
   save_local_state: False
   
 server:
-  total_rounds: 200
-  start_val_round: 30
+  total_rounds: 250
+  start_val_round: 60
   val_interval: 1
-  epoch_per_round: 2
+  epoch_per_round: 1
   best_model_metric_name: froc_mean_recall
   
   model: 
@@ -50,10 +50,12 @@ server:
       mu: 0.01
 
   scheduler: 
-    template: fl_modules.optimizer.scheduler.GradualWarmupScheduler
+    template: fl_modules.optimizer.scheduler.WarmupCosineAnnealingScheduler
     params:
       gamma: 0.01
       warmup_epochs: 10
+      T_max: 300
+      eta_min: 0.0005
 
   det_postprocess:
     val:
