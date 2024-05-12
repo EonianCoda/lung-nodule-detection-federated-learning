@@ -35,7 +35,8 @@ class Client:
                  model,
                  optimizer,
                  ema,
-                 device: torch.device):
+                 device: torch.device,
+                 save_local_state: bool = False):
         self.name = name
         # Create client folder
         self.client_folder = client_folder
@@ -48,6 +49,7 @@ class Client:
         self.optimizer = optimizer
         self.ema = ema
         self.device = device
+        self.save_local_state = save_local_state
     
     def prepare(self):
         self._build_dataset_config()    
@@ -175,6 +177,10 @@ class Client:
         save_path = join(self.client_folder, 'model', f'{round_number}.pt')
         os.makedirs(os.path.dirname(save_path), exist_ok = True)
         torch.save(model.state_dict(), save_path)
+        if not self.save_local_state:
+            for round_number in range(round_number - 1):
+                if os.path.exists(join(self.client_folder, 'model', f'{round_number}.pt')):
+                    os.remove(join(self.client_folder, 'model', f'{round_number}.pt'))
         
     def load_model_state(self, model, round_number: int, device: torch.device):
         save_path = join(self.client_folder, 'model', f'{round_number}.pt')
@@ -184,6 +190,10 @@ class Client:
         save_path = join(self.client_folder, 'optimizer', f'{round_number}.pt')
         os.makedirs(os.path.dirname(save_path), exist_ok = True)
         torch.save(optimizer.state_dict(), save_path)
+        if not self.save_local_state:
+            for round_number in range(round_number - 1):
+                if os.path.exists(join(self.client_folder, 'optimizer', f'{round_number}.pt')):
+                    os.remove(join(self.client_folder, 'optimizer', f'{round_number}.pt'))
     
     def load_optimizer_state(self, optimizer, round_number: int, device: torch.device):
         save_path = join(self.client_folder, 'optimizer', f'{round_number}.pt')
@@ -193,6 +203,10 @@ class Client:
         save_path = join(self.client_folder, 'scheduler', f'{round_number}.pt')
         os.makedirs(os.path.dirname(save_path), exist_ok = True)
         torch.save(scheduler.state_dict(), save_path)
+        if not self.save_local_state:
+            for round_number in range(round_number - 1):
+                if os.path.exists(join(self.client_folder, 'scheduler', f'{round_number}.pt')):
+                    os.remove(join(self.client_folder, 'scheduler', f'{round_number}.pt'))
         
     def load_scheduler_state(self, scheduler, round_number: int, device: torch.device):
         save_path = join(self.client_folder, 'scheduler', f'{round_number}.pt')
@@ -202,6 +216,10 @@ class Client:
         save_path = join(self.client_folder, 'ema', f'{round_number}.pt')
         os.makedirs(os.path.dirname(save_path), exist_ok = True)
         torch.save(ema.state_dict(), save_path)
+        if not self.save_local_state:
+            for round_number in range(round_number - 1):
+                if os.path.exists(join(self.client_folder, 'ema', f'{round_number}.pt')):
+                    os.remove(join(self.client_folder, 'ema', f'{round_number}.pt'))
     
     def load_ema_state(self, ema, round_number: int, device: torch.device):
         save_path = join(self.client_folder, 'ema', f'{round_number}.pt')

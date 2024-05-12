@@ -461,7 +461,8 @@ class Server:
                             model = self.model,
                             optimizer = self.optimizer,
                             ema = self.ema,
-                            device = self.device)
+                            device = self.device,
+                            save_local_state = self.save_local_state)
             client.prepare()
             
             # Build action
