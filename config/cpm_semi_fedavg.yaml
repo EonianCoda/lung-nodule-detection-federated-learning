@@ -19,7 +19,24 @@ server:
       act_type: ReLU
       out_stride: 4
       detection_loss:
-        template: fl_modules.model.cpm_net.loss.DetectionLoss
+        template: fl_modules.model.cpm_net.loss_semi_soft.DetectionLoss
+        params:
+          crop_size: [96, 96, 96]
+          pos_target_topk: 7
+          pos_ignore_ratio: 5
+          cls_num_neg: -1 # -1 means all negative samples
+          cls_num_hard: 200
+          cls_fn_weight: 4.0
+          cls_fn_threshold: 0.8
+          cls_neg_pos_ratio: 100
+          cls_hard_fp_thrs1: 0.5
+          cls_hard_fp_thrs2: 0.7
+          cls_hard_fp_w1: 1.5
+          cls_hard_fp_w2: 2.0
+          cls_focal_alpha: 0.75
+          cls_focal_gamma: 2.0
+      unsupervised_detection_loss:
+        template: fl_modules.model.cpm_net.loss_semi_soft.Unsupervised_DetectionLoss
         params:
           crop_size: [96, 96, 96]
           pos_target_topk: 7
@@ -95,6 +112,11 @@ server:
         lambda_shape: 1.0
         lambda_offset: 1.0
         batch_size: 5
+        # Semi-supervised learning args
+        ema_buffer: True
+        sharpen_cls: 0.95
+        select_bg_crop: 3
+
 
     val:
       template: fl_modules.client.cpm_val.val
