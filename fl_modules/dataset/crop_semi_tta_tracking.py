@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function, division
 import numpy as np
-import random
 import scipy
 from itertools import product
 from .utils import compute_bbox3d_intersection_volume

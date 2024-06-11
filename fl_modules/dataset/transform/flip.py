@@ -87,15 +87,18 @@ class SemiRandomFlip(AbstractTransform):
             sample['image'] = image_t
 
             ctr = sample['ctr'].copy()
-            gt_ctr = sample['gt_ctr'].copy()
+            if 'gt_ctr' in sample:
+                gt_ctr = sample['gt_ctr'].copy()
             offset = np.array([0, 0, 0]) # (z, y, x)
             for axis in flip_axes:
                 ctr[:, axis] = input_shape[axis] - 1 - ctr[:, axis]
-                gt_ctr[:, axis] = input_shape[axis] - 1 - gt_ctr[:, axis]
+                if 'gt_ctr' in sample:
+                    gt_ctr[:, axis] = input_shape[axis] - 1 - gt_ctr[:, axis]
                 offset[axis] = input_shape[axis] - 1
                 
             sample['ctr'] = ctr
-            sample['gt_ctr'] = gt_ctr
+            if 'gt_ctr' in sample:
+                sample['gt_ctr'] = gt_ctr
             sample['ctr_transform'].append(OffsetMinusCTR(offset))
             sample['feat_transform'].append(FlipFeatTransform(flip_axes))
         return sample

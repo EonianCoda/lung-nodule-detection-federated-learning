@@ -24,6 +24,34 @@ def train_collate_fn(batches) -> Dict[str, torch.Tensor]:
 
     return {'image': torch.from_numpy(imgs), 'annot': torch.from_numpy(annot_padded)}
 
+def train_hardFN_collate_fn(batches) -> Dict[str, torch.Tensor]:
+    batch = []
+    for b in batches:
+        batch.extend(b)
+    imgs = []
+    annots = []
+    series_names = []
+    nodule_indices = []
+    for b in batch:
+        imgs.append(b['image'])
+        annots.append(b['annot'])
+        series_names.append(b['series_name'])
+        nodule_indices.append(b['nodule_indices'])
+    imgs = np.stack(imgs)
+    max_num_annots = max(annot.shape[0] for annot in annots)
+
+    if max_num_annots > 0:
+        annot_padded = np.ones((len(annots), max_num_annots, 10), dtype='float32') * -1
+        for idx, annot in enumerate(annots):
+            if annot.shape[0] > 0:
+                annot_padded[idx, :annot.shape[0], :] = annot
+    else:
+        annot_padded = np.ones((len(annots), 1, 10), dtype='float32') * -1
+
+    return {'image': torch.from_numpy(imgs), 
+            'annot': torch.from_numpy(annot_padded),
+            'series_names': series_names,
+            'nodule_indices': nodule_indices}
 
 def train_classification_collate_fn(batches) -> Dict[str, torch.Tensor]:
     batch = []
@@ -495,6 +523,90 @@ def unlabeled_tta_train_tracking_collate_fn(batches: Dict[str, List[Dict[str, an
     strong_samples = {'image': torch.from_numpy(strong_imgs),
                     'annot': torch.from_numpy(strong_annot_padded),
                     'gt_annot': torch.from_numpy(strong_gt_annot_padded),
+                    'ctr_transform': strong_ctr_transforms,
+                    'feat_transform': strong_feat_transforms,
+                    'spacing': strong_spacings}
+    
+    samples = {'weak': weak_samples, 
+               'strong': strong_samples}
+    return samples
+
+def unlabeled_tta_train_tracking_noGT_collate_fn(batches: Dict[str, List[Dict[str, any]]]):
+    """
+    Args:
+        batches: Dict[str, List[Dict[str, any]]]
+            A dictionary with keys 'weak' and 'strong', each of which is a list of dictionaries.
+            Each dictionary contains keys 'image', 'annot', 'ctr_transform'.
+    """
+    # Prepare weak and strong batches
+    weak_batches = []
+    strong_batches = []
+    
+    for b in batches:
+        weak_batches.append(b['weak'])
+        strong_batches.extend(b['strong'])
+    
+    # Prepare weak and strong images and annotations
+    strong_imgs = []
+    strong_annots = []
+    strong_spacings = []
+    
+    for b in strong_batches:
+        strong_imgs.append(b['image'])
+        strong_annots.append(b['annot'])
+        strong_spacings.append(b['spacing'])
+ 
+    weak_imgs = []
+    weak_lobes = []
+    weak_annots = []
+    weak_spacing = []
+    weak_series_names = []
+    weak_ctr_transforms = []
+    weak_feat_transforms = []
+    weak_transform_weights = []
+    for b in weak_batches:
+        weak_imgs.append(b['image']) # (N, num_aug, 1, crop_z, crop_y, crop_x)
+        weak_lobes.append(b['lobe']) # (N, 1, crop_z // out_stride, crop_y // out_stride, crop_x // out_stride)
+        weak_annots.append(b['annots']) # list of dicts, keys: 'ctr', 'rad', 'cls', 'gt_ctr', 'gt_rad', 'gt_cls', 'image_spacing'
+        weak_spacing.extend([a['spacing'] for a in b['annots']])
+        weak_series_names.extend(b['series_name'])
+        # Copy the center and feature transforms
+        weak_ctr_transforms.extend([b['ctr_transform'] for _ in range(b['image'].shape[0])])  # (N, num_aug)
+        weak_feat_transforms.extend([b['feat_transform'] for _ in range(b['image'].shape[0])]) # (N, num_aug)
+        weak_transform_weights.append(np.repeat(b['transform_weight'][np.newaxis, :], b['image'].shape[0], axis=0)) # (N, num_aug)
+        
+    weak_imgs = np.concatenate(weak_imgs, axis=0)
+    weak_lobes = np.concatenate(weak_lobes, axis=0)
+    weak_transform_weights = np.concatenate(weak_transform_weights, axis=0)
+    weak_spacing = np.array(weak_spacing)
+    
+    strong_imgs = np.stack(strong_imgs)
+    strong_max_num_annots = max(annot.shape[0] for annot in strong_annots)
+    # Prepare weak and strong center transforms
+    strong_ctr_transforms = [s['ctr_transform'] for s in strong_batches]
+    strong_feat_transforms = [s['feat_transform'] for s in strong_batches]
+    
+    # Pad strong annotations
+    if strong_max_num_annots > 0:
+        strong_annot_padded = np.ones((len(strong_annots), strong_max_num_annots, 10), dtype='float32') * -1
+        for idx, annot in enumerate(strong_annots):
+            if annot.shape[0] > 0:
+                strong_annot_padded[idx, :annot.shape[0], :] = annot
+    else:
+        strong_annot_padded = np.ones((len(strong_annots), 1, 10), dtype='float32') * -1
+    
+    # Return the samples
+    weak_samples = {'image': torch.from_numpy(weak_imgs), 
+                    'lobe': torch.from_numpy(weak_lobes),
+                    'transform_weights': weak_transform_weights,
+                    'annot': weak_annots,
+                    'spacing': weak_spacing,
+                    'series_name': weak_series_names,
+                    'ctr_transform': weak_ctr_transforms,
+                    'feat_transform': weak_feat_transforms}
+    
+    strong_samples = {'image': torch.from_numpy(strong_imgs),
+                    'annot': torch.from_numpy(strong_annot_padded),
                     'ctr_transform': strong_ctr_transforms,
                     'feat_transform': strong_feat_transforms,
                     'spacing': strong_spacings}

@@ -127,8 +127,12 @@ class SemiRandomRotate90(AbstractTransform):
             rot_ctr = sample['ctr']
             rot_rad = sample['rad']
             
-            rot_gt_ctr = sample['gt_ctr']
-            rot_gt_rad = sample['gt_rad']
+            if 'gt_ctr' in sample:
+                rot_gt_ctr = sample['gt_ctr']
+                rot_gt_rad = sample['gt_rad']
+            else:
+                rot_gt_ctr = None
+                rot_gt_rad = None
             
             rot_spacing = sample['spacing']
             for rot_axes, rot_angle in zip(all_rot_axes, rot_angles):
@@ -140,8 +144,9 @@ class SemiRandomRotate90(AbstractTransform):
             sample['ctr'] = rot_ctr
             sample['rad'] = rot_rad
             
-            sample['gt_ctr'] = rot_gt_ctr
-            sample['gt_rad'] = rot_gt_rad
+            if 'gt_ctr' in sample:
+                sample['gt_ctr'] = rot_gt_ctr
+                sample['gt_rad'] = rot_gt_rad
             
             sample['spacing'] = rot_spacing
         return sample
@@ -174,8 +179,12 @@ class SemiRandomRotate90(AbstractTransform):
         new_shape_dhw = bbox_shapes.copy()
         new_image_spacing = image_spacing.copy()
         
-        new_gt_ctr_zyx = gt_ctrs.copy()
-        new_gt_shape_dhw = gt_bbox_shapes.copy()
+        if isinstance(gt_ctrs, np.ndarray):
+            new_gt_ctr_zyx = gt_ctrs.copy()
+            new_gt_shape_dhw = gt_bbox_shapes.copy()
+        else:
+            new_gt_ctr_zyx = None
+            new_gt_shape_dhw = None
         
         radian = math.radians(angle)
         cos = np.cos(radian)
@@ -185,7 +194,7 @@ class SemiRandomRotate90(AbstractTransform):
             new_ctr_zyx[:, rot_axes[0]] = (ctrs[:, rot_axes[0]] - img_center[rot_axes[0]]) * cos - (ctrs[:, rot_axes[1]] - img_center[rot_axes[1]]) * sin + img_center[rot_axes[0]]
             new_ctr_zyx[:, rot_axes[1]] = (ctrs[:, rot_axes[0]] - img_center[rot_axes[0]]) * sin + (ctrs[:, rot_axes[1]] - img_center[rot_axes[1]]) * cos + img_center[rot_axes[1]]
 
-        if len(gt_ctrs) != 0:
+        if isinstance(gt_ctrs, np.ndarray) and len(gt_ctrs) != 0:
             new_gt_ctr_zyx[:, rot_axes[0]] = (gt_ctrs[:, rot_axes[0]] - img_center[rot_axes[0]]) * cos - (gt_ctrs[:, rot_axes[1]] - img_center[rot_axes[1]]) * sin + img_center[rot_axes[0]]
             new_gt_ctr_zyx[:, rot_axes[1]] = (gt_ctrs[:, rot_axes[0]] - img_center[rot_axes[0]]) * sin + (gt_ctrs[:, rot_axes[1]] - img_center[rot_axes[1]]) * cos + img_center[rot_axes[1]]
             
@@ -194,7 +203,7 @@ class SemiRandomRotate90(AbstractTransform):
                 new_shape_dhw[:, rot_axes[0]] = bbox_shapes[:, rot_axes[1]] 
                 new_shape_dhw[:, rot_axes[1]] = bbox_shapes[:, rot_axes[0]]
                 
-            if len(gt_bbox_shapes) != 0:
+            if isinstance(gt_ctrs, np.ndarray) and len(gt_bbox_shapes) != 0:
                 new_gt_shape_dhw[:, rot_axes[0]] = gt_bbox_shapes[:, rot_axes[1]] 
                 new_gt_shape_dhw[:, rot_axes[1]] = gt_bbox_shapes[:, rot_axes[0]]
                 

@@ -39,15 +39,17 @@ class SemiCoordToAnnot(AbstractTransform):
         ctr = sample['ctr']
         rad = sample['rad']
         cls = sample['cls']
-        
-        gt_ctr = sample['gt_ctr']
-        gt_rad = sample['gt_rad']
-        gt_cls = sample['gt_cls']
-        
         spacing = sample['spacing']
         
         annot = np.concatenate([ctr, rad.reshape(-1, 3), np.tile(spacing, (ctr.shape[0], 1)).reshape(-1, 3), cls.reshape(-1, 1)], axis=-1).astype('float32') # (n, 10)
-        gt_annot = np.concatenate([gt_ctr, gt_rad.reshape(-1, 3), np.tile(spacing, (gt_ctr.shape[0], 1)).reshape(-1, 3), gt_cls.reshape(-1, 1)], axis=-1).astype('float32') # (n, 10)
         sample['annot'] = annot
-        sample['gt_annot'] = gt_annot
+        
+        if 'gt_ctr' in sample:
+            gt_ctr = sample['gt_ctr']
+            gt_rad = sample['gt_rad']
+            gt_cls = sample['gt_cls']
+            gt_annot = np.concatenate([gt_ctr, gt_rad.reshape(-1, 3), np.tile(spacing, (gt_ctr.shape[0], 1)).reshape(-1, 3), gt_cls.reshape(-1, 1)], axis=-1).astype('float32') # (n, 10)
+            sample['gt_annot'] = gt_annot
+        else:
+            sample['gt_annot'] = None
         return sample

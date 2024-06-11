@@ -291,18 +291,17 @@ class CpmNet(nn.Module):
         x2 = self.block2(x)
 
         x = self.block2_dw(x2)
-        if self.dropout is not None:
-            x2 = self.dropout(x2)
         x3 = self.block3(x)
 
         x = self.block3_dw(x3)
-        if self.dropout is not None:
-            x3 = self.dropout(x3)
 
         if self.out_stride == 4:
             feats = self.fpn([x2, x3])
         else:
             feats = self.fpn([x1, x2, x3])
+            
+        if self.training and self.dropout is not None:
+            feats = self.dropout(feats)
             
         "decode"
         out = self.head(feats)
