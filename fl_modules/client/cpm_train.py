@@ -24,14 +24,7 @@ def train_one_step_wrapper(memory_format,  lambda_cls: float, lambda_shape: floa
         return loss, cls_pos_loss, cls_neg_loss, shape_loss, offset_loss, iou_loss
     return train_one_step
 
-def train(mixed_precision: bool,
-          memory_format: str,
-          iters_to_accumulate: int,
-          lambda_cls: float,
-          lambda_shape: float,
-          lambda_offset: float,
-          lambda_iou: float,
-          model: nn.modules,
+def train(model: nn.modules,
           optimizer: torch.optim.Optimizer,
           dataloader: DataLoader,
           device: torch.device,
@@ -39,7 +32,11 @@ def train(mixed_precision: bool,
           enable_progress_bar = False,
           log_metric = False,
           **kwargs) -> Dict[str, float]:
-    model.train()
+    mixed_precision = kwargs['mixed_precision']
+    memory_format = kwargs['memory_format']
+    iters_to_accumulate = kwargs['iters_to_accumulate']
+    
+    # Initialize average meters
     avg_cls_pos_loss = AverageMeter()
     avg_cls_neg_loss = AverageMeter()
     avg_cls_loss = AverageMeter()
@@ -47,22 +44,25 @@ def train(mixed_precision: bool,
     avg_offset_loss = AverageMeter()
     avg_iou_loss = AverageMeter()
     avg_loss = AverageMeter()
-    
-    # mixed precision training
-    if mixed_precision:
-        scaler = torch.cuda.amp.GradScaler()
         
-    total_num_steps = len(dataloader)
-    
+    # Get memory format
     memory_format = get_memory_format(memory_format)
     if memory_format == torch.channels_last_3d:
         logger.info('Use memory format: channels_last_3d to train')
-    train_one_step = train_one_step_wrapper(memory_format, lambda_cls, lambda_shape, lambda_offset, lambda_iou)
         
-    optimizer.zero_grad()
-    
+    # Initialize progress bar
+    total_num_steps = len(dataloader)
     if enable_progress_bar:
         progress_bar = get_progress_bar('Train', (total_num_steps - 1) // iters_to_accumulate + 1)
+    
+    # Mixed precision training
+    if mixed_precision:
+        scaler = torch.cuda.amp.GradScaler()
+    
+    # Training loop
+    model.train()
+    optimizer.zero_grad()
+    train_one_step = train_one_step_wrapper(memory_format, kwargs['lambda_cls'], kwargs['lambda_shape'], kwargs['lambda_offset'], kwargs['lambda_iou']) 
     for iter_i, sample in enumerate(dataloader):
         if mixed_precision:
             with torch.cuda.amp.autocast():

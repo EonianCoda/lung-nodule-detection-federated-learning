@@ -25,26 +25,16 @@ def convert_to_standard_output(output: np.ndarray, series_name: str) -> List[Lis
         preds.append([series_name, output[j, 4], output[j, 3], output[j, 2], output[j, 1], output[j, 7], output[j, 6], output[j, 5]])
     return preds
 
-def val(mixed_precision: bool,
-        memory_format: str, 
-        iou_threshold: float,
-        exp_folder: str,
-        patch_label_type: str,
+def val(exp_folder: str,
         model: nn.Module,
         detection_postprocess,
         dataloader: DataLoader,
         device: torch.device,
-        image_spacing: List[float],
         series_list_path: str,
-        froc_det_thresholds: List[float] = [0.2, 0.5, 0.7],
-        apply_lobe: bool = False,
         epoch: str = 0,
         batch_size: int = 8,
         nms_keep_top_k: int = 40,
         nodule_type_diameters : Dict[str, Tuple[float, float]] = None,
-        min_d: int = 0,
-        min_size: int = 0,
-        nodule_size_mode: str = 'seg_size',
         enable_progress_bar = False,
         log_metric = False,
         **kwargs) -> Dict[str, float]:
@@ -53,6 +43,18 @@ def val(mixed_precision: bool,
     else:
         save_dir = os.path.join(exp_folder, epoch)
     os.makedirs(save_dir, exist_ok=True)
+    
+    iou_threshold = kwargs['iou_threshold']
+    memory_format = kwargs['memory_format']
+    mixed_precision = kwargs['mixed_precision']
+    froc_det_thresholds = kwargs['froc_det_thresholds']
+    min_size = kwargs['min_size']
+    min_d = kwargs['min_d']
+    apply_lobe = kwargs['apply_lobe']
+    nodule_size_mode = kwargs['nodule_size_mode']
+    image_spacing = kwargs['image_spacing']
+    patch_label_type = kwargs['patch_label_type']
+    
     if min_d != 0:
         logger.info('When validating, ignore nodules with depth less than {}'.format(min_d))
     if min_size != 0:
