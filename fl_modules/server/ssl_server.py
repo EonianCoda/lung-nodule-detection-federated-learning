@@ -487,8 +487,6 @@ class Server:
                             client_folder = join(self.exp_folder, 'client', client_name),
                             client_config = self.config['client'],
                             dataset_params_config = self.clients_config[client_name]['dataset_params'], 
-                            # model = self.model_s,
-                            # optimizer = self.optimizer,
                             device = self.device,
                             save_local_state = self.save_local_state)
             client.prepare()

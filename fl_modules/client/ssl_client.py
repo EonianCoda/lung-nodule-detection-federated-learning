@@ -115,7 +115,7 @@ class Client:
             self.pseudo_label_dataloader = DataLoader(self.pseudo_label_set,
                                                         batch_size = batch_size,
                                                         num_workers = num_workers,
-                                                        collate_fn = infer_collate_fn,
+                                                        collate_fn = infer_aug_collate_fn,
                                                         shuffle = False,
                                                         drop_last = False,
                                                         pin_memory = True)
@@ -126,6 +126,7 @@ class Client:
         pseudo_labels = self.pseudo_label_fn(**self.pseudo_label_config)
         
         save_path = join(self.client_folder, 'pseudo_label', f'pseu_labels_epoch_{epoch}.pkl')
+        os.makedirs(os.path.dirname(save_path), exist_ok = True)
         with open(save_path, 'wb') as f:
             pickle.dump(pseudo_labels, f)
         

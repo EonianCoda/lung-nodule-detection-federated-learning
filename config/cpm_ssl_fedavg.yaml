@@ -192,7 +192,6 @@ server:
         keep_local_state: [] # If strategy is not continue_global, this field is ignored.
 
 client:
-
   nodule_size_ranges: # pixel size,
     benign: [0, 52] 
     probably_benign: [52, 176] 

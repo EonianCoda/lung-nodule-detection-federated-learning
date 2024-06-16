@@ -45,7 +45,6 @@ def gen_pseu_labels(model: nn.Module,
                     dataloader: DataLoader,
                     device: torch.device,
                     detection_postprocess,
-                    memory_format: str = None,
                     **kwargs) -> Dict[str, np.ndarray]:
     """
     Return:
