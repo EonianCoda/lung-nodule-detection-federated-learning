@@ -665,7 +665,6 @@ def train(model_t: nn.modules,
                 'pseu_fn': avg_fn_pseu.sum,
                 'pseu_fn_probs': avg_fn_probs.avg}
     
-    dataloader_u.dataset.confirm_pseudo_labels()
     if log_metric:
         for metric, value in metrics.items():
             logger.info("Train metric '{}' = {:.4f}".format(metric, value))

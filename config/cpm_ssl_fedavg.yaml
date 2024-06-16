@@ -220,7 +220,7 @@ client:
           sample_num: 6
 
   unlabeled_det_dataset:
-    template: fl_modules.dataset.dataset.cpm_dataset_val_aug
+    template: fl_modules.dataset.cpm_dataset_val_aug.DetDataset
     params:
       apply_lobe: True
       out_stride: 4

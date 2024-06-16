@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 import fl_modules.dataset.transform as transform
 from fl_modules.utilities import build_instance, write_yaml, build_config
 from fl_modules.inference.nodule_counter import NoduleCounter
-from fl_modules.dataset.collate import train_collate_fn, infer_collate_fn, unlabeled_tta_train_tracking_collate_fn
+from fl_modules.dataset.collate import train_collate_fn, infer_collate_fn, unlabeled_tta_train_tracking_collate_fn, infer_aug_collate_fn
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +48,6 @@ class Client:
                  client_folder: str,
                  client_config: Dict[str, Any],
                  dataset_params_config: Dict[str, Dict[str, Any]],
-                #  model,
-                #  optimizer,
                  device: torch.device,
                  save_local_state: bool = False):
         self.name = name
@@ -60,8 +58,6 @@ class Client:
         self.client_config = client_config
         self.dataset_params_config = dataset_params_config
         
-        # self.model = model
-        # self.optimizer = optimizer
         self.device = device
         self.save_local_state = save_local_state
     
@@ -82,6 +78,8 @@ class Client:
                 target = 'train_dataset'
             elif key == 'unlabeled_train':
                 target = 'unlabeled_train_dataset'
+            elif key == 'unlabeled_det':
+                target = 'unlabeled_det_dataset'
             else:
                 target = 'val_dataset'
             
@@ -106,11 +104,11 @@ class Client:
     def gen_pseudo_labels(self, model, detection_postprocess, epoch: int):
         logger.info(f"Client '{self.name}' starts generating pseudo labels!")
         # Lazy initialize dataset
-        if self.pseudo_label_config.get('dataset', None) == None:
-            config = copy.deepcopy(self.dataset_config['train'])
+        if self.pseudo_label_config.get('dataloader', None) == None:
+            config = copy.deepcopy(self.dataset_config['unlabeled_det'])
             config = build_config(config)
             
-            self.pseudo_label_set = build_instance(self.client_config['train_dataset']['template'], config)
+            self.pseudo_label_set = build_instance(self.client_config['unlabeled_det_dataset']['template'], config)
             batch_size = self.pseudo_label_config.get('batch_size', 1)
             num_workers = min(batch_size, 4)
             

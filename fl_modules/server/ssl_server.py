@@ -495,6 +495,7 @@ class Server:
             
             # Build action
             client.build_action(train_fn, train_fn_params, 'train')
+            client.build_action(pseudo_label_fn, pseudo_label_fn_params, 'pseudo_label')
             client.build_action(val_fn, val_fn_params, 'val')
             client.build_action(test_fn, test_fn_params, 'test')
             
