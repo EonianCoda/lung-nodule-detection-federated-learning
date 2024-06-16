@@ -21,7 +21,7 @@ def get_args():
     parser.add_argument('--pretrained_train_val_ratios', nargs='+', type=float, default=[0.9, 0.1])
     parser.add_argument('--train_val_test_ratios', nargs='+', type=float, default=[0.8, 0.1, 0.1])
     parser.add_argument('--use_unlabel', action='store_true', default=False)
-    parser.add_argument('--unlabeled_ratio', type=float, default=0.8)
+    parser.add_argument('--unlabeled_ratio', type=float, default=0.9)
     parser.add_argument('--seed', type=int, default=1029)
     args = parser.parse_args()
     return args
