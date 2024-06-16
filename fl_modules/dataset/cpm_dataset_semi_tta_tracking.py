@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
 import logging
+import pickle
 import copy
 import torchvision
 import numpy as np
 from typing import List
+
+from torch.utils.data import Dataset
+import torch
+
 from .utils import load_series_list, load_image, load_label, load_lobe, ALL_RAD, ALL_LOC, ALL_CLS, ALL_PROB, \
                     gen_dicom_path, gen_label_path, gen_lobe_path, normalize_processed_image, normalize_raw_image, \
                     compute_bbox3d_iou
-from torch.utils.data import Dataset
-from transform.ctr_transform import OffsetMinusCTR
-from transform.feat_transform import FlipFeatTransform
+from fl_modules.dataset.transform.ctr_transform import OffsetMinusCTR
+from fl_modules.dataset.transform.feat_transform import FlipFeatTransform
 from fl_modules.utilities.box_utils import nms_3D
-import torch
 
 logger = logging.getLogger(__name__)
 
@@ -199,17 +202,23 @@ class FlipTransform():
         return sample
 
 class UnLabeledDataset(Dataset):
-    def __init__(self, series_list_path: str, image_spacing: List[float], strong_aug = None, crop_fn=None, use_bg=False, 
-                 min_d=0, min_size: int = 0, norm_method='scale', mmap_mode=None, use_gt_crop=True, pseudo_remove_threshold=0.4,
-                 pseudo_update_ema_alpha = 0.9):
+    def __init__(self, series_list_path: str, image_spacing: List[float], transform_post = None, crop_fn=None, use_bg=False, 
+                 min_d=0, min_size: int = 0, norm_method='scale', mmap_mode=None, use_gt_crop=False, pseudo_remove_threshold=0.4,
+                 pseudo_crop_threshold = 0.5, pseudo_update_ema_alpha = 0.9, pseudo_label_pkl_path=None, **kwargs):
         self.series_list_path = series_list_path
         self.norm_method = norm_method
         self.image_spacing = np.array(image_spacing, dtype=np.float32) # (z, y, x)
         self.min_d = int(min_d)
         self.min_size = int(min_size)
         self.psuedo_remove_threshold = pseudo_remove_threshold
-        self.pseudo_update_ema_alpha = pseudo_update_ema_alpha
         
+        self.original_pseudo_update_ema_alpha = pseudo_update_ema_alpha
+        self.pseudo_update_ema_alpha = pseudo_update_ema_alpha
+        self.pseudo_crop_threshold = pseudo_crop_threshold
+        
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+            
         if self.min_d > 0:
             logger.info('When training, ignore nodules with depth less than {}'.format(min_d))
         
@@ -252,10 +261,28 @@ class UnLabeledDataset(Dataset):
         self.tta_trans_weight = [0.5] + [0.5 / len(tta_transforms)] * len(tta_transforms) # first one is for no augmentation
         self.tta_trans_weight = np.array([w / sum(self.tta_trans_weight) for w in self.tta_trans_weight]) # normalize to 1
         
-        self.strong_aug = strong_aug
+        self.strong_aug = transform_post
         self.crop_fn = crop_fn
         self.mmap_mode = mmap_mode
         self.use_gt_crop = use_gt_crop
+        
+        if pseudo_label_pkl_path is not None:
+            with open(pseudo_label_pkl_path, 'rb') as f:
+                pseudo_labels = pickle.load(f)
+            for series_name, label in pseudo_labels.items():
+                prob = label[ALL_PROB]
+                if len(prob) != 0:
+                    valid_mask = (prob > self.pseudo_crop_threshold)
+                    if len(valid_mask) == 0:
+                        label = {ALL_LOC: np.zeros((0, 3)),
+                                ALL_RAD: np.zeros((0,)),
+                                ALL_CLS: np.zeros((0, 3), dtype=np.int32),
+                                ALL_PROB: np.zeros((0,))}
+                    else:
+                        label = {key: value[valid_mask] for key, value in label.items()}
+                    pseudo_labels[series_name] = label
+                    
+            self.set_pseu_labels(pseudo_labels)
         
     def set_pseu_labels(self, labels):
         """

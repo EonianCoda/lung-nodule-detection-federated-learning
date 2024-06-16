@@ -1,0 +1,35 @@
+COA:
+  dataset_params:
+    train:
+      series_list_path: './data/new_unlabeled/client0_r02_labeled_train.txt'
+    unlabeled_train:
+      series_list_path: './data/new_unlabeled/client0_r02_unlabeled_train.txt'
+      pseudo_label_pkl_path: './save/pt_pseu_labels_client0_r02_new.pkl'
+    val:
+      series_list_path: './data/client0_val.txt'
+    test:
+      series_list_path: './data/client0_test.txt'
+
+COB:
+  dataset_params:
+    train:
+      series_list_path: './data/new_unlabeled/client1_r02_labeled_train.txt'
+    unlabeled_train:
+      series_list_path: './data/new_unlabeled/client1_r02_unlabeled_train.txt'
+      pseudo_label_pkl_path: './save/pt_pseu_labels_client1_r02_new.pkl'
+    val:
+      series_list_path: './data/client1_val.txt'
+    test:
+      series_list_path: './data/client1_test.txt'
+
+COC:
+  dataset_params:
+    train:
+      series_list_path: './data/new_unlabeled/client2_r02_labeled_train.txt'
+    unlabeled_train:
+      series_list_path: './data/new_unlabeled/client2_r02_unlabeled_train.txt'
+      pseudo_label_pkl_path: './save/pt_pseu_labels_client2_r02_new.pkl'
+    val:
+      series_list_path: './data/client2_val.txt'
+    test:
+      series_list_path: './data/client2_test.txt'

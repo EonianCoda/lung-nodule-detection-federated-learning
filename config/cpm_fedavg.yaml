@@ -89,7 +89,7 @@ server:
     train:
       template: fl_modules.client.cpm_train.train
       params:
-        iters_to_accumulate: 2
+        iters_to_accumulate: 1
         lambda_cls: 4.0
         lambda_iou: 4.0
         lambda_shape: 1.0

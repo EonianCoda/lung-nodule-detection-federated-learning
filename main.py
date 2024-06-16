@@ -1,9 +1,11 @@
 import os
 from os.path import join
 import argparse
+import logging
 
-from fl_modules.server.server import Server
-from fl_modules.utilities import load_yaml, get_local_time_in_taiwan, init_seed, setup_logging, write_yaml
+from fl_modules.utilities import load_yaml, get_local_time_in_taiwan, init_seed, setup_logging, write_yaml, build_class
+
+logger = logging.getLogger(__name__)
 
 def get_args():
     parser = argparse.ArgumentParser(description = 'Offline Federated Learning')
@@ -12,6 +14,7 @@ def get_args():
     parser.add_argument('--pretrained_model_path', type = str, default = None, help = 'Path to pretrained model')
     parser.add_argument('--config_path', type = str, default = './config/stage1.yaml', help = 'Path to config file')
     parser.add_argument('--clients_config_path', type = str, default = './config/clients/stage1_clients.yaml', help = 'Path to clients config file')
+    parser.add_argument('--ssl', action = 'store_true', help = 'Semi-supervised learning')
     args = parser.parse_args()
     return args
 
@@ -59,6 +62,12 @@ if __name__ == '__main__':
     write_yaml(join(exp_folder, 'clients_config.yaml'), load_yaml(clients_config_path), default_flow_style = None)
     write_yaml(join(exp_folder, 'args.yaml'), vars(args), default_flow_style = None)
     # Build server
+    if args.ssl:
+        logger.info('Using SSL')
+        from fl_modules.server.ssl_server import Server
+    else:
+        from fl_modules.server.server import Server
+        
     server = Server(config = config, 
                     clients_config = clients_config,
                     exp_folder = exp_folder, 
