@@ -116,6 +116,8 @@ server:
         probably_benign: [4, 6]
         probably_suspicious: [6, 8]
         suspicious: [8, -1]
+      min_d: 0
+      min_size: 27
 
     pseudo_label:
       template: fl_modules.client.pseudo_label.gen_pseu_labels
