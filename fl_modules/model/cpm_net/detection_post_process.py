@@ -41,7 +41,7 @@ class DetectionPostprocess(nn.Module):
         # recale to input_size
         pred_bboxes = bbox_decode(anchor_points, pred_offsets, pred_shapes, stride_tensor)
         # Get the topk scores and indices
-        topk_scores, topk_indices = torch.topk(pred_scores.squeeze(), self.topk, dim=-1, largest=True)
+        topk_scores, topk_indices = torch.topk(pred_scores.squeeze(dim=2), self.topk, dim=-1, largest=True)
         
         dets = (-torch.ones((batch_size, self.topk, 8))).to(device)
         for j in range(batch_size):
