@@ -317,12 +317,12 @@ class FedProxAdamW(Optimizer):
                 if p.grad is None:
                     continue
 
-                w_old_p = group_w_old[i]
-                p.grad.add_(p - w_old_p, alpha=group['mu']) # Perform FedProx update
-                
                 # Perform stepweight decay
                 p.mul_(1 - group['lr'] * group['weight_decay'])
 
+                w_old_p = group_w_old[i]
+                p.grad.add_(p - w_old_p, alpha=group['mu']) # Perform FedProx update
+                
                 # Perform optimization step
                 grad = p.grad
                 if grad.is_sparse:
