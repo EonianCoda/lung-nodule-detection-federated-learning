@@ -153,14 +153,14 @@ class Client:
         # Update Pseudo Labels
         train_loader_u = self.train_config['dataloader_u']
         original_num_unlabeled = len(train_loader_u.dataset)
-        ema_update_labels_save_path = join(self.client_folder, 'ema_update_labels', f'ema_updated_labels_{epoch}.pkl')
+        ema_update_labels_save_path = join(self.client_folder, 'ema_update_labels', f'ema_updated_labels_{round_number}.pkl')
         os.makedirs(os.path.dirname(ema_update_labels_save_path), exist_ok=True)
         with open(ema_update_labels_save_path, 'wb') as f:
             pickle.dump(train_loader_u.dataset.ema_updated_labels, f)
         
         train_loader_u.dataset.confirm_pseudo_labels()
         
-        psuedo_label_save_path = os.path.join(self.client_folder, 'history_psuedo_labels', f'history_psuedo_labels_{epoch}.pkl')
+        psuedo_label_save_path = os.path.join(self.client_folder, 'history_psuedo_labels', f'history_psuedo_labels_{round_number}.pkl')
         os.makedirs(os.path.dirname(psuedo_label_save_path), exist_ok=True)
         with open(psuedo_label_save_path, 'wb') as f:
             pickle.dump(train_loader_u.dataset.labels, f)
