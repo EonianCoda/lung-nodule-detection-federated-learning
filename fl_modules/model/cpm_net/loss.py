@@ -150,6 +150,7 @@ class DetectionLoss(nn.Module):
     def target_proprocess(annotations: torch.Tensor, 
                           device, 
                           input_size: List[int],
+                          stride: List[int],
                           mask_ignore: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Preprocess the annotations to generate the targets for the network.
         In this function, we remove some annotations that the area of nodule is too small in the crop box. (Probably cropped by the edge of the image)
@@ -201,7 +202,14 @@ class DetectionLoss(nn.Module):
                     bbox = torch.from_numpy(np.array([float(z1 + 0.5 * nd), float(y1 + 0.5 * nh), float(x1 + 0.5 * nw), float(nd), float(nh), float(nw), float(spacing_z), float(spacing_y), float(spacing_x), 0])).to(device)
                     bbox_annotation_target.append(bbox.view(1, 10))
                 else:
-                    mask_ignore[sample_i, 0, int(z1) : int(torch.ceil(z2)), int(y1) : int(torch.ceil(y2)), int(x1) : int(torch.ceil(x2))] = -1
+                    z1 = int(torch.floor(z1 / stride[0]))
+                    z2 = min(int(torch.ceil(z2 / stride[0])), mask_ignore.size(2))
+                    y1 = int(torch.floor(y1 / stride[1]))
+                    y2 = min(int(torch.ceil(y2 / stride[1])), mask_ignore.size(3))
+                    x1 = int(torch.floor(x1 / stride[2]))
+                    x2 = min(int(torch.ceil(x2 / stride[2])), mask_ignore.size(4))
+                    mask_ignore[sample_i, 0, z1 : z2, y1 : y2, x1 : x2] = -1
+                    # mask_ignore[sample_i, 0, int(z1) : int(torch.ceil(z2)), int(y1) : int(torch.ceil(y2)), int(x1) : int(torch.ceil(x2))] = -1
             if len(bbox_annotation_target) > 0:
                 bbox_annotation_target = torch.cat(bbox_annotation_target, 0)
                 annotations_new[sample_i, :len(bbox_annotation_target)] = bbox_annotation_target
@@ -328,7 +336,8 @@ class DetectionLoss(nn.Module):
         pred_offsets = pred_offsets.permute(0, 2, 1).contiguous()
         
         # process annotations
-        process_annotations, target_mask_ignore = self.target_proprocess(annotations, device, self.crop_size, target_mask_ignore)
+        stride_list = [self.crop_size[0] / Cls.size()[2], self.crop_size[1] / Cls.size()[3], self.crop_size[2] / Cls.size()[4]]
+        process_annotations, target_mask_ignore = self.target_proprocess(annotations, device, self.crop_size, stride_list, target_mask_ignore)
         target_mask_ignore = target_mask_ignore.view(batch_size, 1,  -1)
         target_mask_ignore = target_mask_ignore.permute(0, 2, 1).contiguous()
         # generate center points. Only support single scale feature
@@ -359,7 +368,7 @@ class DetectionLoss(nn.Module):
                                                     alpha=self.cls_focal_alpha,
                                                     gamma=self.cls_focal_gamma)
         
-        # Only calculate the loss of positive samples                                 
+        # Only calculate the loss of positive samples                               
         fg_mask = target_scores.squeeze(-1).bool()
         if fg_mask.sum() == 0:
             reg_loss = torch.tensor(0.0, device=device)

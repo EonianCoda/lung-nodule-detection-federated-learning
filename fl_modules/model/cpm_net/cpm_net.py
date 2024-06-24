@@ -293,7 +293,7 @@ class CpmNet(nn.Module):
         x = self.block2_dw(x2)
         x3 = self.block3(x)
 
-        x = self.block3_dw(x3)
+        # x = self.block3_dw(x3)
 
         if self.out_stride == 4:
             feats = self.fpn([x2, x3])

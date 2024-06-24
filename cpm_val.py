@@ -159,7 +159,7 @@ if __name__ == '__main__':
         logger.info('Save validation results to "{}"'.format(exp_folder))
         logger.info('Val set: "{}"'.format(args.val_set))
         
-        save_folder_name = '{}_{}'.format(os.path.basename(model_path).split('.')[0], os.path.basename(args.val_set).split('.')[0])
+        save_folder_name = os.path.basename(args.val_set).split('.')[0]
         if args.do_padding:
             save_folder_name += '_pad'
         if args.apply_lobe:

@@ -6,7 +6,7 @@ import torch.nn as nn
 import random
 import torch.nn.functional as F
 
-from fl_modules.utilities.box_utils import bbox_decode, make_anchors, zyxdhw2zyxzyx, nms_3D
+from fl_modules.utilities.box_utils import bbox_decode, make_anchors, zyxdhw2zyxzyx
 
 class DetectionLoss(nn.Module):
     def __init__(self, 
