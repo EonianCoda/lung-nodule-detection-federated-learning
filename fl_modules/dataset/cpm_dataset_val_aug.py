@@ -9,10 +9,10 @@ from torch.utils.data import Dataset
 import torchvision
 import copy
 import math
+logger = logging.getLogger(__name__)
+
 from fl_modules.dataset.transform.ctr_transform import OffsetMinusCTR, RotateCTR, TransposeCTR
 from fl_modules.dataset.transform.feat_transform import FlipFeatTransform, Rot90FeatTransform, TransposeFeatTransform
-
-logger = logging.getLogger(__name__)
 
 class FlipTransform():
     def __init__(self, flip_depth=True, flip_height=True, flip_width=True):
@@ -169,7 +169,7 @@ class TransPose():
 class DetDataset(Dataset):
     """Detection dataset for inference
     """
-    def __init__(self, series_list_path: str, image_spacing: List[float], SplitComb, norm_method='scale', apply_lobe=False, out_stride = 4, **kwargs):
+    def __init__(self, series_list_path: str, image_spacing: List[float], SplitComb, norm_method='scale', apply_lobe=False, out_stride = 4):
         self.series_list_path = series_list_path
         self.apply_lobe = apply_lobe
         self.norm_method = norm_method
@@ -186,9 +186,11 @@ class DetDataset(Dataset):
         self.splitcomb = SplitComb
         transforms = [[FlipTransform(flip_depth=False, flip_height=False, flip_width=True)],
                     [FlipTransform(flip_depth=False, flip_height=True, flip_width=False)],
-                    [FlipTransform(flip_depth=True, flip_height=False, flip_width=False)]]
-        
-        self.transforms_weight = [0.5] + [0.5 / len(transforms)] * len(transforms) # first one is for no augmentation
+                    [FlipTransform(flip_depth=True, flip_height=False, flip_width=False)],
+                    [Rotate90(rot_xy = True, rot_xz = False, rot_yz = False)],
+                    [Rotate90(rot_xy = False, rot_xz = True, rot_yz = False)],
+                    [Rotate90(rot_xy = False, rot_xz = False, rot_yz = True)]]
+        self.transforms_weight = [0.3] + [0.7 / len(transforms)] * len(transforms) # first one is for no augmentation
         self.transforms_weight = np.array([w / sum(self.transforms_weight) for w in self.transforms_weight]) # normalize to 1
         self.transforms = []
         for i in range(len(transforms)):

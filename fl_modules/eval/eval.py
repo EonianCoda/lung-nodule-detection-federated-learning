@@ -346,9 +346,20 @@ class Evaluation:
             
             if self.patch_label_type != 'none':
                 patch_label_path = gen_patch_label_path(series_dir, series_name)
-                if os.path.exists(patch_label_path):
-                    patch_label = load_patch_label(patch_label_path, self.image_spacing)
-                    
+                patch_label_BME_combined_path = os.path.join(series_dir, 'mask', f'{series_name}_nodule_count_patch_crop_BME_combined.json')
+                if os.path.exists(patch_label_path) or os.path.exists(patch_label_BME_combined_path):
+                    patch_label = None
+                    if os.path.exists(patch_label_path):
+                        patch_label = load_patch_label(patch_label_path, self.image_spacing)
+                        
+                    if os.path.exists(patch_label_BME_combined_path):
+                        if patch_label is None:
+                            patch_label = load_patch_label(patch_label_BME_combined_path, self.image_spacing)
+                        else:
+                            temp = load_patch_label(patch_label_BME_combined_path, self.image_spacing)
+                            for key in temp:
+                                patch_label[key] = np.concatenate([patch_label[key], temp[key]], axis=0)
+                        
                     if self.patch_label_type == 'tp':
                         tp_mask = (patch_label[ALL_CLS] == 0)
                     elif self.patch_label_type == 'benign':
