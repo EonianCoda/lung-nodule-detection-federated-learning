@@ -7,6 +7,7 @@ server:
   total_rounds: 250
   start_val_round: 60
   val_interval: 1
+  val_local: False
   epoch_per_round: 1
   best_model_metric_name: froc_mean_recall
   

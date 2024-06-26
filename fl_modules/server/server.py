@@ -57,6 +57,8 @@ class Server:
         self.start_val_round = self.config['server']['start_val_round']
         self.val_interval = self.config['server']['val_interval']
         self.epoch_per_round = self.config['server']['epoch_per_round']
+        self.val_local = self.config['server']['val_local'] # Whether to validate on local model
+        
         
     def start(self):
         self._init_training()
@@ -123,7 +125,7 @@ class Server:
                 client.save_ema_state(self.ema, round_number)
             
             # Validation
-            if round_number >= self.start_val_round and round_number % self.val_interval == 0:
+            if round_number >= self.start_val_round and round_number % self.val_interval == 0 and self.val_local:
                 # For scaffold, we need to update control variate before validation
                 if hasattr(self.optimizer, 'update_control_variate'):
                     self.optimizer.update_control_variate()
@@ -137,7 +139,7 @@ class Server:
                 #     self.ema.restore()
                 
         self.write_tensorboard(client_train_metrics, round_number, 'train')
-        if round_number >= self.start_val_round and round_number % self.val_interval == 0:
+        if round_number >= self.start_val_round and round_number % self.val_interval == 0 and self.val_local:
             self.write_tensorboard(client_val_local_metrics, round_number, 'val_local')
         
         # Aggregate
