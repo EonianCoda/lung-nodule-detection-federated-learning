@@ -59,7 +59,7 @@ server:
   optimizer: 
     template: fl_modules.optimizer.adamW.AdamW 
     params:
-      lr: 0.001
+      lr: 0.002
       weight_decay: 0.0001
 
   scheduler: 
@@ -149,14 +149,15 @@ server:
         lambda_pseu_shape: 0.1
 
         semi_ema_alpha: 0.998
-        pseudo_label_threshold: 0.65
-        pseudo_background_threshold: 0.3
-        pseudo_crop_threshold: 0.5
-        pseudo_remove_threshold: 0.4 # same as pseudo_remove_threshold in unlabeled_train_dataset
+        pseudo_label_threshold: 0.6
+        pseudo_background_threshold: 0.4
+        pseudo_crop_threshold: 0.55
+        pseudo_remove_threshold: 0.5 # same as pseudo_remove_threshold in unlabeled_train_dataset
         pseudo_update_iou_threshold: 0.05
         pseudo_update_ema_alpha: 0.95
 
         pseudo_nms_topk: 10
+        semi_increase_ratio: 1.2
         pseudo_tracking_warmup_epochs: 30
         pseudo_update_interval: -1 ##TODO
 

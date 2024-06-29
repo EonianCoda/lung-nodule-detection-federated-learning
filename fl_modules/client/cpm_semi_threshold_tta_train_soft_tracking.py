@@ -296,9 +296,9 @@ def train(model_t: nn.modules,
             Shape_output = (Shape_output * transform_weight).sum(1) # (bs, 3, 24, 24, 24)
             Offset_output = Offset_output[:, 0, ...] # (bs, 3, 24, 24, 24)
             lobe = weak_lobes[i * TTA_BATCH_SIZE:end]
-            if sharpen_cls > 0:
-                assert sharpen_cls < 1
-                Cls_output = sharpen_prob(Cls_output, t=sharpen_cls)
+            # if sharpen_cls > 0:
+            #     assert sharpen_cls < 1
+            #     Cls_output = sharpen_prob(Cls_output, t=sharpen_cls)
             outputs_t_b = {'Cls': Cls_output, 'Shape': Shape_output, 'Offset': Offset_output}
             
             outputs_t_b = detection_postprocess(outputs_t_b, device=device, is_logits=False, lobe_mask = lobe, threshold = pseudo_crop_threshold, nms_topk=pseudo_nms_topk) #1, prob, ctr_z, ctr_y, ctr_x, d, h, w
@@ -354,7 +354,7 @@ def train(model_t: nn.modules,
             elif len(outputs_t_b) == 0: # No any pseudo label in this batch
                 history_bboxes = np.stack([history_ctrs_b - history_rads_b / 2, history_ctrs_b + history_rads_b / 2], axis=1)
                 history_valid_ious = compute_bbox3d_iou(history_bboxes, crop_bboxes)
-                history_valid_mask = (history_valid_ious.max(axis=1) >= 0.5)
+                history_valid_mask = (history_valid_ious.max(axis=1) >= 0.3)
                 if np.count_nonzero(history_valid_mask) != 0:
                     history_probs[batch_i][history_valid_mask] *= pseudo_update_ema_alpha
                 continue
@@ -398,7 +398,9 @@ def train(model_t: nn.modules,
             if len(new_probs_b) > 0:
                 history_ctrs[batch_i] = np.concatenate([history_ctrs[batch_i], new_ctrs_b], axis=0)
                 history_rads[batch_i] = np.concatenate([history_rads[batch_i], new_rads_b], axis=0)
-                history_probs[batch_i] = np.concatenate([history_probs[batch_i], new_probs_b], axis=0) * pseudo_update_ema_alpha
+                # history_probs[batch_i] = np.concatenate([history_probs[batch_i], new_probs_b], axis=0) * args.pseudo_update_ema_alpha
+                new_probs_b = np.array(new_probs_b, dtype=np.float32) * 0.9 # penalize the new pseudo label
+                history_probs[batch_i] = np.concatenate([history_probs[batch_i], new_probs_b], axis=0)
         
         # Generate pseudo label
         strong_ctr_transforms = strong_u_sample['ctr_transform'] # shape = (bs,)

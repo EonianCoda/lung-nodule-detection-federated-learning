@@ -66,7 +66,7 @@ def act_layer(act='ReLU'):
 
 def norm_layer3d(norm_type, num_features):
     if norm_type == 'batchnorm':
-        return nn.BatchNorm3d(num_features=num_features, momentum=0.02)
+        return nn.BatchNorm3d(num_features=num_features, momentum=0.05)
     elif norm_type == 'instancenorm':
         return nn.InstanceNorm3d(num_features=num_features, affine=True)
     elif norm_type == 'groupnorm':

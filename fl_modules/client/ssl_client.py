@@ -133,7 +133,7 @@ class Client:
         dataloader_u = self.train_config['dataloader_u']
         dataloader_u.dataset.set_pseu_labels(pseudo_labels)
         
-    def train(self, round_number: int, num_epoch:int, model_t, model_s, loss_fn, semi_loss_fn, optimizer, detection_postprocess):
+    def train(self, round_number: int, num_epoch:int, model_t, model_s, loss_fn, semi_loss_fn, optimizer, detection_postprocess, **kwargs):
         logger.info(f"Client '{self.name}' starts training!")
         # Lazy initialize dataset
         self._init_train_dataloader()
@@ -150,6 +150,11 @@ class Client:
         
         self.save_metrics(train_metrics, 'train', round_number)
         
+        for k in kwargs.keys():
+            if k in self.train_config:
+                self.train_config[k] = kwargs[k]
+                logger.info(f"Update train config: {k} = {kwargs[k]}")
+                
         # Update Pseudo Labels
         train_loader_u = self.train_config['dataloader_u']
         original_num_unlabeled = len(train_loader_u.dataset)

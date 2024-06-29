@@ -58,6 +58,9 @@ class Server:
         self.epoch_per_round = self.config['server']['epoch_per_round']
         self.val_local = self.config['server']['val_local']
         
+        self.origin_pseudo_label_threshold = self.config['server']['actions']['train']['params']['pseudo_label_threshold']
+        self.pseudo_label_threshold = self.origin_pseudo_label_threshold
+        self.semi_increase_ratio = self.config['server']['actions']['train']['params']['semi_increase_ratio']
     def start(self):
         self._init_training()
         # Generate pseudo labels for clients
@@ -75,6 +78,15 @@ class Server:
         # Training and validation
         for round_number in range(self.start_round, self.total_rounds):
             logger.info(f"Round {round_number}/{self.total_rounds - 1}")
+            # Update pseudo label threshold
+            if self.semi_increase_ratio > 1.0:
+                self.pseudo_label_threshold = self.origin_pseudo_label_threshold * (self.semi_increase_ratio ** round_number)
+                logger.info(f"Update pseudo label threshold to {self.pseudo_label_threshold}")
+                final_psuedo_label_threshod = self.origin_pseudo_label_threshold * self.semi_increase_ratio
+                self.pseudo_label_threshold = self.origin_pseudo_label_threshold + (final_psuedo_label_threshod - self.origin_pseudo_label_threshold) * (round_number / self.total_rounds)
+            else:
+                self.pseudo_label_threshold = self.origin_pseudo_label_threshold
+            
             self.one_round(round_number)
             
         logger.info('Best model metric: {:.4f} at round {}'.format(self.best_model_metric, self.best_model_round))
@@ -126,7 +138,7 @@ class Server:
             # Training
             train_metrics = client.train(round_number = round_number, num_epoch = self.epoch_per_round, model_s = self.model_s, 
                                          model_t = self.model_t, loss_fn = self.loss, semi_loss_fn = self.semi_loss, 
-                                         optimizer = self.optimizer, detection_postprocess = self.train_det_postprocess)
+                                         optimizer = self.optimizer, detection_postprocess = self.train_det_postprocess, pseudo_label_threshold = self.pseudo_label_threshold)
             self.scheduler.step()
             client_train_metrics[client_name] = train_metrics
             for metric_name, metric_value in train_metrics.items():

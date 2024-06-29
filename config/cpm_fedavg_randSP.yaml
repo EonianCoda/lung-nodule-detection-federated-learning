@@ -1,0 +1,176 @@
+common:
+  seed: 0
+  save_dir: './save'
+  save_local_state: False
+  
+server:
+  total_rounds: 250
+  start_val_round: 100
+  val_interval: 1
+  val_local: False
+  epoch_per_round: 1
+  best_model_metric_name: froc_mean_recall
+  
+  model: 
+    template: fl_modules.model.cpm_net.cpm_net.CpmNet
+    params:
+      n_filters: [64, 96, 128, 160]
+      stem_filters: 32
+      norm_type: batchnorm
+      act_type: ReLU
+      out_stride: 4
+      dropout: 0.3
+      detection_loss:
+        template: fl_modules.model.cpm_net.loss.DetectionLoss
+        params:
+          crop_size: [96, 96, 96]
+          pos_target_topk: 7
+          pos_ignore_ratio: 5
+          cls_num_neg: -1 # -1 means all negative samples
+          cls_num_hard: 200
+          cls_fn_weight: 4.0
+          cls_fn_threshold: 0.8
+          cls_neg_pos_ratio: 100
+          cls_hard_fp_thrs1: 0.5
+          cls_hard_fp_thrs2: 0.7
+          cls_hard_fp_w1: 1.5
+          cls_hard_fp_w2: 2.0
+          cls_focal_alpha: 0.75
+          cls_focal_gamma: 2.0
+
+  ema:
+    apply: False
+    params:
+      momentum: 0.998
+      apply_buffer: True
+
+  optimizer: 
+    template: fl_modules.optimizer.adamW.AdamW 
+    params:
+      lr: 0.002
+      weight_decay: 0.0001
+
+  scheduler: 
+    template: fl_modules.optimizer.scheduler.WarmupCosineAnnealingScheduler
+    params:
+      gamma: 0.01
+      warmup_epochs: 10
+      T_max: 300
+      eta_min: 0.0005
+
+  det_postprocess:
+    val:
+      template: fl_modules.model.cpm_net.detection_post_process.DetectionPostprocess
+      params:
+        topk: 60
+        threshold: 0.4
+        min_size: 27
+        nms_topk: 20
+        crop_size: [96, 96, 96]
+    test:
+      template: fl_modules.model.cpm_net.detection_post_process.DetectionPostprocess
+      params:
+        topk: 60
+        threshold: 0.2
+        min_size: 27
+        nms_topk: 20
+        crop_size: [96, 96, 96]  
+
+  actions:
+    shared_params: # shared params for all actions
+      memory_format: channels_first
+      mixed_precision: True
+      enable_progress_bar: True
+      log_metric: False
+      nodule_type_diameters:
+        benign: [0, 4]
+        probably_benign: [4, 6]
+        probably_suspicious: [6, 8]
+        suspicious: [8, -1]
+      min_d: 0
+      min_size: 27
+
+    train:
+      template: fl_modules.client.cpm_train.train
+      params:
+        iters_to_accumulate: 1
+        lambda_cls: 4.0
+        lambda_iou: 4.0
+        lambda_shape: 1.0
+        lambda_offset: 1.0
+        batch_size: 5
+
+    val:
+      template: fl_modules.client.cpm_val.val
+      params:
+        iou_threshold: 0.2
+        froc_det_thresholds: [0.4, 0.5, 0.7]
+        min_size: 27
+        nodule_size_mode: seg_size
+        apply_lobe: False
+        image_spacing: [1.0, 0.8, 0.8]
+        patch_label_type: none
+        batch_size: 2
+
+    test:
+      template: fl_modules.client.cpm_val.val
+      params:
+        iou_threshold: 0.1
+        froc_det_thresholds: [0.2, 0.5, 0.7]
+        min_size: 27
+        nodule_size_mode: seg_size
+        apply_lobe: False
+        image_spacing: [1.0, 0.8, 0.8]
+        patch_label_type: none
+        batch_size: 1
+
+  aggregation:
+    optimizer_aggregate_strategy: continue_global # continue_global, continue_local, reset
+    template:
+      fl_modules.server.aggregation.fedavg.FedAvg
+    params:
+      model:
+        keep_local_state: []
+      optimizer:
+        keep_local_state: [] # If strategy is not continue_global, this field is ignored.
+
+client:
+
+  nodule_size_ranges: # pixel size,
+    benign: [0, 52] 
+    probably_benign: [52, 176] 
+    probably_suspicious: [176, 418]
+    suspicious: [418, -1]
+
+  shared_params:
+    image_spacing: [1.0, 0.8, 0.8]
+    min_size: 27
+    norm_method: none
+  
+  train_dataset:
+    template: fl_modules.dataset.cpm_dataset.TrainDataset
+    params:
+      crop_fn:
+        template: fl_modules.dataset.crop_rand_spacing.InstanceCrop
+        params:
+          crop_size: [96, 96, 96]
+          overlap_ratio: 0.25
+          rand_trans: [16, 16, 16]
+          rand_rot: [30, 0, 0]
+          instance_crop: True
+          tp_ratio: 0.6
+          sample_num: 8
+          rand_spacing: [0.9, 1.1]
+        
+  val_dataset:
+    template: fl_modules.dataset.cpm_dataset.DetDataset
+    params:
+      apply_lobe: False
+      out_stride: 4
+      SplitComb:
+        template: fl_modules.dataset.split_combine.SplitComb
+        params:
+          crop_size: [96, 96, 96]
+          overlap_size: [24, 24, 24]
+          do_padding: False
+          pad_value: 0
