@@ -257,7 +257,6 @@ class CpmNet(nn.Module):
         self.block2_dw = dw_block(n_filters[1], n_filters[2], norm_type=norm_type, act_type=act_type)
 
         self.block3 = LayerBasic(n_blocks[2], n_filters[2], n_filters[2], norm_type=norm_type, act_type=act_type, se=se)
-        self.block3_dw = dw_block(n_filters[2], n_filters[3], norm_type=norm_type, act_type=act_type)
 
         # Dropout
         if dropout > 0:
@@ -292,8 +291,6 @@ class CpmNet(nn.Module):
 
         x = self.block2_dw(x2)
         x3 = self.block3(x)
-
-        # x = self.block3_dw(x3)
 
         if self.out_stride == 4:
             feats = self.fpn([x2, x3])

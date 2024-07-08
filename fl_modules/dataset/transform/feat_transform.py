@@ -67,9 +67,23 @@ class Rot90FeatTransform(AbstractFeatTransform):
     
     def backward(self, feat):
         if isinstance(feat, np.ndarray):
-            return np.rot90(feat, -self.rot_angle // 90, self.rot_axes)
+            rot_feat = np.rot90(feat, -self.rot_angle // 90, self.rot_axes)
+            if len(feat.shape) == 4 and feat.shape[0] == 3: # 4 is (channel, depth, height, width), 3 is d, h, w or z, y, x
+                # Change rotation axes
+                rot_axis1 = self.rot_axes[0]
+                rot_axis2 = self.rot_axes[1]
+                # swap axis in the channel dimension
+                rot_feat[[rot_axis1, rot_axis2]] = rot_feat[[rot_axis2, rot_axis1]]
+            return rot_feat
         elif isinstance(feat, torch.Tensor):
-            return torch.rot90(feat, -self.rot_angle // 90, self.rot_axes)
+            rot_feat = torch.rot90(feat, -self.rot_angle // 90, self.rot_axes)
+            if len(feat.shape) == 4 and feat.shape[0] == 3:
+                # Change rotation axes
+                rot_axis1 = self.rot_axes[0]
+                rot_axis2 = self.rot_axes[1]
+                # swap axis in the channel dimension
+                rot_feat[[rot_axis1, rot_axis2]] = rot_feat[[rot_axis2, rot_axis1]]
+            return rot_feat
 
 class TransposeFeatTransform(AbstractFeatTransform):
     def __init__(self, transpose_order: Tuple[int]):
