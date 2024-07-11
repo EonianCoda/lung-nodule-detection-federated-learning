@@ -91,7 +91,7 @@ class SemiRandomFlip(AbstractTransform):
                 gt_ctr = sample['gt_ctr'].copy()
             offset = np.array([0, 0, 0]) # (z, y, x)
             for axis in flip_axes:
-                ctr[:, axis] = input_shape[axis] - 1 - ctr[:, axis]
+                ctr[:, axis] = input_shape[axis] - ctr[:, axis]
                 if 'gt_ctr' in sample:
                     gt_ctr[:, axis] = input_shape[axis] - gt_ctr[:, axis]
                 offset[axis] = input_shape[axis]
