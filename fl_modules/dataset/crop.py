@@ -120,8 +120,8 @@ class InstanceCrop(object):
                                         [-self.rand_rot[2], self.rand_rot[2]], rot_center=C, p=0.8)
             matrixs.append(matrix)
             # According to the matrixs, we can decide if the crop is foreground or background
-            bb_min = np.maximum(matrix[0] - 2, 0)
-            bb_max = bb_min + crop_size + 4
+            bb_min = np.maximum(matrix[0] - 5, 0)
+            bb_max = bb_min + crop_size + 10
             if len(all_loc) == 0:
                 tp_num = 0
             else:
