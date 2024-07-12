@@ -20,9 +20,9 @@ def build_train_augmentation(crop_size: Tuple[int, int, int]):
     rot_zx = (crop_size[0] == crop_size[1] == crop_size[2])
 
     transform_list_train = []
-    transform_list_train.append(transform.Pad(output_size=crop_size, pad_value=0.714)) # pad water value
     transform_list_train.append(transform.RandomFlip(p=0.5, flip_depth=True, flip_height=True, flip_width=True))
     transform_list_train.append(transform.RandomRotate90(p=0.5, rot_xy=True, rot_xz=rot_zx, rot_yz=rot_zy))
+    transform_list_train.append(transform.RandomIntensity(p=0.3))
     transform_list_train.append(transform.CoordToAnnot())
                             
     train_transform = torchvision.transforms.Compose(transform_list_train)
