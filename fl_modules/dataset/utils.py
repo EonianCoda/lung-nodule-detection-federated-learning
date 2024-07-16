@@ -11,6 +11,7 @@ DEFAULT_WATER_RATIO = 0.714
 
 BBOXES = 'bboxes'
 NODULE_SIZE = 'nodule_size'
+DIAMETERS = 'diameters'
 ALL_LOC = 'all_loc'
 ALL_RAD = 'all_rad'
 ALL_CLS = 'all_cls'
@@ -27,7 +28,7 @@ def gen_dicom_path(folder: str, series_name: str) -> str:
     return os.path.join(folder, 'npy', f'{series_name}_crop.npy')
 
 def gen_label_path(dir_name: str, name: str) -> str:
-    return os.path.join(dir_name, 'mask', f'{name}_nodule_count_crop.json')
+    return os.path.join(dir_name, 'mask', f'{name}_nodule_count_crop_diameters.json')
 
 def gen_lobe_path(dir_name: str, name: str) -> str:
     return os.path.join(dir_name, 'npy', f'{name}_lobe_crop.npz')
@@ -127,6 +128,7 @@ def load_label(label_path: str, image_spacing: np.ndarray, min_d = 0, min_size =
         label = {ALL_LOC: np.zeros((0, 3), dtype=np.float64),
                 ALL_RAD: np.zeros((0, 3), dtype=np.int32),
                 ALL_CLS: np.zeros((0,), dtype=np.float64),
+                DIAMETERS: np.zeros((0,), dtype=np.float64),
                 NODULE_SIZE: np.zeros((0,), dtype=np.int32)}
     else:
         bboxes[:, 0, :] = np.maximum(bboxes[:, 0, :], 0) # clip to 0
@@ -145,20 +147,23 @@ def load_label(label_path: str, image_spacing: np.ndarray, min_d = 0, min_size =
         
         all_rad = all_rad * image_spacing # (z, y, x)
         all_cls = np.zeros((all_loc.shape[0],), dtype=np.int32)
-
+        diameters = np.array(info[DIAMETERS], dtype=np.float64)
         if np.sum(valid_mask) == 0:
             label = {ALL_LOC: np.zeros((0, 3), dtype=np.float64),
                     ALL_RAD: np.zeros((0, 3), dtype=np.int32),
                     ALL_CLS: np.zeros((0, ), dtype=np.float64),
+                    DIAMETERS: np.zeros((0, ), dtype=np.float64),
                     NODULE_SIZE: np.zeros((0,), dtype=np.int32)}
         else:
             all_loc = all_loc[valid_mask]
             all_rad = all_rad[valid_mask]
             all_cls = all_cls[valid_mask]
+            diameters = diameters[valid_mask]
             nodule_sizes = nodule_sizes[valid_mask]
             label = {ALL_LOC: all_loc, 
                     ALL_RAD: all_rad,
                     ALL_CLS: all_cls,
+                    DIAMETERS: diameters,
                     NODULE_SIZE: nodule_sizes}
     return label
 

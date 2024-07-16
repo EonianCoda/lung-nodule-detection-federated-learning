@@ -42,3 +42,13 @@ class NoduleTyper:
     def get_nodule_type_by_dhw(self, d: int, h: int, w: int) -> str:
         nodule_volume = compute_nodule_volume(w, h, d)
         return self.get_nodule_type_by_seg_size(nodule_volume)
+    
+    def get_noduel_type_by_diameters(self, diameter: int) -> str:
+        if diameter < 4:
+            return 'benign'
+        elif diameter < 6:
+            return 'probably_benign'
+        elif diameter < 8:
+            return 'probably_suspicious'
+        else:
+            return 'suspicious'
