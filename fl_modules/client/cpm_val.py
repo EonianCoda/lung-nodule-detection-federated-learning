@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from fl_modules.utilities.box_utils import nms_3D
 from fl_modules.utilities.utils import get_progress_bar
-from fl_modules.eval.eval import Evaluation
+from fl_modules.eval.eval_diameters import Evaluation
 from .utils import get_memory_format
 
 logger = logging.getLogger(__name__)

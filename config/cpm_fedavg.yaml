@@ -19,7 +19,6 @@ server:
       norm_type: batchnorm
       act_type: ReLU
       out_stride: 4
-      dropout: 0.3
       detection_loss:
         template: fl_modules.model.cpm_net.loss.DetectionLoss
         params:
