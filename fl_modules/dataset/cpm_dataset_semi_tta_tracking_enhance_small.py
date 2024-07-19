@@ -12,8 +12,8 @@ import torch
 from .utils import load_series_list, load_image, load_label, load_lobe, ALL_RAD, ALL_LOC, ALL_CLS, ALL_PROB, \
                     gen_dicom_path, gen_label_path, gen_lobe_path, normalize_processed_image, normalize_raw_image, \
                     compute_bbox3d_iou
-from transform.ctr_transform import OffsetMinusCTR, RotateCTR
-from transform.feat_transform import FlipFeatTransform, Rot90FeatTransform
+from fl_modules.dataset.transform.ctr_transform import OffsetMinusCTR, RotateCTR
+from fl_modules.dataset.transform.feat_transform import FlipFeatTransform, Rot90FeatTransform
 from fl_modules.utilities.box_utils import nms_3D
 import math
 
@@ -291,7 +291,7 @@ class Rotate90():
         return new_ctr_zyx, new_shape_dhw, new_image_spacing
 
 class UnLabeledDataset(Dataset):
-    def __init__(self, series_list_path: str, image_spacing: List[float], strong_aug = None, crop_fn=None, use_bg=False, 
+    def __init__(self, series_list_path: str, image_spacing: List[float], transform_post = None, crop_fn=None, use_bg=False, 
                  min_d=0, min_size: int = 0, norm_method='scale', mmap_mode=None, use_gt_crop=True, pseudo_remove_threshold=0.4,
                   use_rotate90=False, small_size_threshold=200,
                   pseudo_crop_threshold = 0.5, pseudo_update_ema_alpha = 0.9, pseudo_label_pkl_path=None, **kwargs):
@@ -360,7 +360,7 @@ class UnLabeledDataset(Dataset):
         self.tta_trans_weight = [raw_weight] + [(1 - raw_weight) / len(tta_transforms)] * len(tta_transforms) # first one is for no augmentation
         self.tta_trans_weight = np.array([w / sum(self.tta_trans_weight) for w in self.tta_trans_weight]) # normalize to 1
         
-        self.strong_aug = strong_aug
+        self.strong_aug = transform_post
         self.crop_fn = crop_fn
         self.mmap_mode = mmap_mode
         self.use_gt_crop = use_gt_crop
@@ -372,7 +372,7 @@ class UnLabeledDataset(Dataset):
             for series_name, label in pseu_labels.items():
                 prob = label[ALL_PROB]
                 if len(prob) != 0:
-                    valid_mask = (prob > get_prob_threshold(label[ALL_RAD], self.pseudo_label_threshold))
+                    valid_mask = (prob > get_prob_threshold(label[ALL_RAD], self.pseudo_crop_threshold))
                     if len(valid_mask) == 0:
                         label = {ALL_LOC: np.zeros((0, 3)),
                                 ALL_RAD: np.zeros((0,)),

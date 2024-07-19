@@ -148,8 +148,8 @@ class Client:
         self.train_config['optimizer'] = optimizer
         for epoch in range(num_epoch):
             train_metrics = self.train_fn(**self.train_config)
-        
-        if hasattr(train_loader_u.dataset, 'get_pseudo_recall_precision', None) != None:
+        train_loader_u = self.train_config['dataloader_u']
+        if hasattr(train_loader_u.dataset, 'get_pseudo_recall_precision') != None:
             recall, precision, tp, fp, fn = train_loader_u.dataset.get_pseudo_recall_precision()
             train_metrics['all_pseudo_recall'] = recall
             train_metrics['all_pseudo_precision'] = precision
@@ -165,7 +165,6 @@ class Client:
                 logger.info(f"Update train config: {k} = {kwargs[k]}")
                 
         # Update Pseudo Labels
-        train_loader_u = self.train_config['dataloader_u']
         original_num_unlabeled = len(train_loader_u.dataset)
         ema_update_labels_save_path = join(self.client_folder, 'ema_update_labels', f'ema_updated_labels_{round_number}.pkl')
         os.makedirs(os.path.dirname(ema_update_labels_save_path), exist_ok=True)

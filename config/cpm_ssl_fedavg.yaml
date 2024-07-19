@@ -59,7 +59,7 @@ server:
   optimizer: 
     template: fl_modules.optimizer.adamW.AdamW 
     params:
-      lr: 0.002
+      lr: 0.001
       weight_decay: 0.0001
 
   scheduler: 
@@ -127,26 +127,26 @@ server:
         nms_keep_top_k: 40
 
     train:
-      template: fl_modules.client.cpm_semi_threshold_tta_train_soft_tracking.train
+      template: fl_modules.client.cpm_semi_threshold_tta_train_soft_tracking_enhance_small.train
       params:
         # Shared args
         iters_to_accumulate: 1
         batch_size: 4
         # Supervised learning args
         lambda_cls: 4.0
-        lambda_iou: 1.0
+        lambda_iou: 4.0
         lambda_offset: 1.0
-        lambda_shape: 0.1
+        lambda_shape: 1.0
         # Semi-supervised learning args
         ema_buffer: True
-        sharpen_cls: 0.95
+        sharpen_cls: 1.0
         select_bg_crop: 3
 
-        lambda_pseu: 1.0
         lambda_pseu_cls: 4.0
         lambda_pseu_iou: 1.0
         lambda_pseu_offset: 1.0
         lambda_pseu_shape: 0.1
+        lambda_pseu: 1.0
 
         semi_ema_alpha: 0.998
         pseudo_label_threshold: 0.6
@@ -209,7 +209,7 @@ client:
     norm_method: none
   
   train_dataset:
-    template: fl_modules.dataset.cpm_dataset_semi_tta_tracking.TrainDataset
+    template: fl_modules.dataset.cpm_dataset_semi_tta_tracking_enhance_small.TrainDataset
     params:
       crop_fn:
         template: fl_modules.dataset.crop.InstanceCrop
@@ -236,12 +236,14 @@ client:
           pad_value: 0
 
   unlabeled_train_dataset:
-    template: fl_modules.dataset.cpm_dataset_semi_tta_tracking.UnLabeledDataset
+    template: fl_modules.dataset.cpm_dataset_semi_tta_tracking_enhance_small.UnLabeledDataset
     params:
-      pseudo_remove_threshold: 0.4 # same as pseudo_remove_threshold in train action
-      pseudo_crop_threshold: 0.5
+      pseudo_remove_threshold: 0.5 # same as pseudo_remove_threshold in train action
+      pseudo_crop_threshold: 0.55
       use_gt_crop: False
       pseudo_update_ema_alpha: 0.95 # same as pseudo_update_ema_alpha in train action
+      use_rotate90: True
+      pseudo_label_threshold: 0.6
       crop_fn:
         template: fl_modules.dataset.crop_semi_tta_tracking.InstanceCrop
         params:

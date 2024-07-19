@@ -45,16 +45,14 @@ def gen_pseu_labels(model: nn.Module,
                     dataloader: DataLoader,
                     device: torch.device,
                     detection_postprocess,
-                    **kwargs) -> Dict[str, np.ndarray]:
+                    batch_size: int = 2,
+                    nms_keep_top_k: int = 40,
+                    mixed_precision: bool = False,
+                    memory_format: str = None) -> Dict[str, np.ndarray]:
     """
     Return:
         A dictionary with series name as key and pseudo labels as value. The pseudo label is a dictionary with keys 'all_loc', 'all_rad', 'all_cls'.
     """
-    memory_format = kwargs['memory_format']
-    val_mixed_precision = kwargs['val_mixed_precision']
-    nms_keep_top_k = kwargs['nms_keep_top_k']
-    batch_size = kwargs['batch_size']
-    
     logger.info("Generating pseudo labels")
     
     model.eval()
@@ -64,7 +62,7 @@ def gen_pseu_labels(model: nn.Module,
     with get_progress_bar('Pseu-Label Generation', len(dataloader)) as pbar:
         for sample in dataloader:
             data = sample['split_images'] # (bs, num_aug, 1, crop_z, crop_y, crop_x)
-            lobes = sample['split_lobes'].to(device, non_blocking=True, memory_format=memory_format)
+            lobes = sample['split_lobes']
             nzhws = sample['nzhws']
             num_splits = sample['num_splits']
             series_names = sample['series_names']
@@ -81,7 +79,7 @@ def gen_pseu_labels(model: nn.Module,
                     end = data.size(0)
                 input = data[i * batch_size:end] # (bs, num_aug, 1, crop_z, crop_y, crop_x)
                 with torch.no_grad():
-                    if val_mixed_precision:
+                    if mixed_precision:
                         with torch.cuda.amp.autocast():
                             input = input.view(-1, 1, *input.size()[3:]).to(device, non_blocking=True, memory_format=memory_format) # (bs * num_aug, 1, crop_z, crop_y, crop_x)
                             pred = model(input)
@@ -105,26 +103,45 @@ def gen_pseu_labels(model: nn.Module,
                             for trans in reversed(feat_transforms[b_i][aug_i]):
                                 Cls_output[b_i, aug_i, ...] = trans.backward(Cls_output[b_i, aug_i, ...])
                                 Shape_output[b_i, aug_i, ...] = trans.backward(Shape_output[b_i, aug_i, ...])
+                                if aug_i < 4:
+                                    Offset_output[b_i, aug_i, ...] = trans.backward(Offset_output[b_i, aug_i, ...])
                 transform_weight = transform_weights[i * batch_size:end] # (bs, num_aug)
                 transform_weight = transform_weight.unsqueeze(2).unsqueeze(3).unsqueeze(4).unsqueeze(5) # (bs, num_aug, 1, 1, 1, 1)
+                
+                Cls_output = Cls_output.sigmoid() # (bs, num_aug, 1, 24, 24, 24)
+                # Compute weighted standard deviation
+                Cls_output_weighted_mean = (Cls_output * transform_weight).sum(1) # (bs, 1, 24, 24, 24)
+                Cls_output_std = torch.sqrt((torch.pow(Cls_output - Cls_output_weighted_mean.unsqueeze(1), 2) * transform_weight).sum(1)) / (len(transform_weight) - 1) # (bs, 1, 24, 24, 24)
                 Cls_output = (Cls_output * transform_weight).sum(1) # (bs, 1, 24, 24, 24)
-                Cls_output = Cls_output.sigmoid()
+                Cls_output = Cls_output_weighted_mean - (Cls_output_std / 3)
+                
                 ignore_offset = 2
-                Cls_output[:, :, :ignore_offset, :, :] = 0
-                Cls_output[:, :, :, :ignore_offset, :] = 0
-                Cls_output[:, :, :, :, :ignore_offset] = 0
+                Cls_output[:, :, 0:ignore_offset, :, :] = 0
+                Cls_output[:, :, :, 0:ignore_offset, :] = 0
+                Cls_output[:, :, :, :, 0:ignore_offset] = 0
                 Cls_output[:, :, -ignore_offset:, :, :] = 0
                 Cls_output[:, :, :, -ignore_offset:, :] = 0
                 Cls_output[:, :, :, :, -ignore_offset:] = 0
                 
                 Shape_output = (Shape_output * transform_weight).sum(1) # (bs, 3, 24, 24, 24)
+                
+                # Only use raw, flipx, flipy, flipz for offset
+                Offset_output = Offset_output[:, :4, ...] # (bs, 4, 3, 24, 24, 24)
+                transform_weight = [1/3] * 3
+                transform_weight = torch.tensor(transform_weight).to(device, non_blocking=True) # (3)
+                # Resize to (bs, 3, 1, 1, 1)
+                transform_weight = transform_weight.view(1, 3, 1, 1, 1)
+                Offset_output[:, 0, 0, ...] = torch.sum(Offset_output[:, [0, 1, 2], 0, ...] * transform_weight, 1) # z-offset, not use flipz aug
+                Offset_output[:, 0, 1, ...] = torch.sum(Offset_output[:, [0, 1, 3], 1, ...] * transform_weight, 1) # y-offset, not use flipy aug
+                Offset_output[:, 0, 2, ...] = torch.sum(Offset_output[:, [0, 2, 3], 2, ...] * transform_weight, 1) # x-offset, not use flipx aug
                 Offset_output = Offset_output[:, 0, ...] # (bs, 3, 24, 24, 24)
+                
                 pred = {'Cls': Cls_output, 'Shape': Shape_output, 'Offset': Offset_output}
-                lobe = lobes[i * batch_size:end]
+                lobe = lobes[i * batch_size:end].to(device, non_blocking=True, memory_format=memory_format)
                 
                 pred = detection_postprocess(pred, device=device, is_logits=False, lobe_mask = lobe) #1, prob, ctr_z, ctr_y, ctr_x, d, h, w
                 preds.append(pred.data.cpu().numpy())
-                del input, Cls_output, Shape_output, Offset_output, pred
+                del input, Cls_output, Shape_output, Offset_output, pred, lobe, transform_weight
             del data, lobes
             
             preds = np.concatenate(preds, 0)

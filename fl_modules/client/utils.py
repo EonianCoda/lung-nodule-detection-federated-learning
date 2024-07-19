@@ -65,8 +65,10 @@ def load_model(load_path: str):
         raise ValueError('Model structure not found in checkpoint')
         
     # Load state dict
-    if 'state_dict' not in checkpoint and 'model_state_dict' not in checkpoint:
+    if 'state_dict' not in checkpoint and 'model_state_dict' not in checkpoint and 'model_s_state_dict' not in checkpoint:
         model.load_state_dict(checkpoint)
+    elif 'model_s_state_dict' in checkpoint:
+        model.load_state_dict(checkpoint['model_s_state_dict'])
     else:
         model.load_state_dict(checkpoint['model_state_dict'])
     return model
