@@ -182,6 +182,9 @@ if __name__ == '__main__':
         if args.patch_label_type != 'none':
             save_folder_name += '_PT{}'.format(args.patch_label_type)
         
+        if args.load_teacher_model:
+            save_folder_name += '_teacher'
+        
         metrics = val(mixed_precision=args.val_mixed_precision,
                         memory_format=args.memory_format,
                         iou_threshold=args.val_iou_threshold,

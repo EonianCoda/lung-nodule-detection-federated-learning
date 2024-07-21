@@ -45,7 +45,7 @@ class FlipTransform():
 
             offset = np.array([0, 0, 0]) # (z, y, x)
             for axis in flip_axes:
-                offset[axis] = input_shape[axis] - 1
+                offset[axis] = input_shape[axis]
             sample['ctr_transform'].append(OffsetMinusCTR(offset))
             sample['feat_transform'].append(FlipFeatTransform(flip_axes))
         return sample
