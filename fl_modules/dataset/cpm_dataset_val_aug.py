@@ -169,7 +169,7 @@ class TransPose():
 class DetDataset(Dataset):
     """Detection dataset for inference
     """
-    def __init__(self, series_list_path: str, image_spacing: List[float], SplitComb, norm_method='scale', apply_lobe=False, out_stride = 4):
+    def __init__(self, series_list_path: str, image_spacing: List[float], SplitComb, norm_method='scale', apply_lobe=False, out_stride = 4, **kwargs):
         self.series_list_path = series_list_path
         self.apply_lobe = apply_lobe
         self.norm_method = norm_method

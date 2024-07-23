@@ -48,7 +48,8 @@ def gen_pseu_labels(model: nn.Module,
                     batch_size: int = 2,
                     nms_keep_top_k: int = 40,
                     mixed_precision: bool = False,
-                    memory_format: str = None) -> Dict[str, np.ndarray]:
+                    memory_format: str = None,
+                    **kwargs) -> Dict[str, np.ndarray]:
     """
     Return:
         A dictionary with series name as key and pseudo labels as value. The pseudo label is a dictionary with keys 'all_loc', 'all_rad', 'all_cls'.
