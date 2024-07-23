@@ -112,9 +112,8 @@ def gen_pseu_labels(model: nn.Module,
                 Cls_output = Cls_output.sigmoid() # (bs, num_aug, 1, 24, 24, 24)
                 # Compute weighted standard deviation
                 Cls_output_weighted_mean = (Cls_output * transform_weight).sum(1) # (bs, 1, 24, 24, 24)
-                Cls_output_std = torch.sqrt((torch.pow(Cls_output - Cls_output_weighted_mean.unsqueeze(1), 2) * transform_weight).sum(1)) / (len(transform_weight) - 1) # (bs, 1, 24, 24, 24)
-                Cls_output = (Cls_output * transform_weight).sum(1) # (bs, 1, 24, 24, 24)
-                Cls_output = Cls_output_weighted_mean - (Cls_output_std / 3)
+                Cls_output_weighted_std = torch.sqrt((torch.pow(Cls_output - Cls_output_weighted_mean.unsqueeze(1), 2) * transform_weight).sum(1) / (transform_weight.shape[1] - 1)) # (bs, 1, 24, 24, 24)
+                Cls_output = Cls_output_weighted_mean - Cls_output_weighted_std # (bs, 1, 24, 24, 24)
                 
                 ignore_offset = 2
                 Cls_output[:, :, 0:ignore_offset, :, :] = 0
