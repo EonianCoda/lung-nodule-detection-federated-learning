@@ -59,7 +59,7 @@ server:
   optimizer: 
     template: fl_modules.optimizer.adamW.AdamW 
     params:
-      lr: 0.002
+      lr: 0.001
       weight_decay: 0.0001
 
   scheduler: 
@@ -123,7 +123,7 @@ server:
     pseudo_label:
       template: fl_modules.client.pseudo_label.gen_pseu_labels
       params:
-        batch_size: 2
+        batch_size: 1
         nms_keep_top_k: 40
 
     train:
