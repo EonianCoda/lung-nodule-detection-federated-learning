@@ -362,15 +362,6 @@ class Server:
             test_metrics = client.test(model = self.model_t, detection_postprocess = self.test_det_postprocess)
             client_test_metrics[client.name] = test_metrics
             
-        # Calculate average metrics of different nodule types
-        sum_test_metrics = dict()
-        for client_name, metrics in client_test_metrics.items():
-            for nodule_type in metrics.keys():
-                if nodule_type not in sum_test_metrics:
-                    sum_test_metrics[nodule_type] = defaultdict(float)
-                for metric_key in ['tp', 'fp', 'fn', 'tn']:
-                    sum_test_metrics[nodule_type][metric_key] += metrics[nodule_type][metric_key]
-                    
     def _init_training(self):
         self._init_model()
         self._init_loss()
